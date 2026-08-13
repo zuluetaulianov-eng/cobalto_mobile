@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/local_extractor_service.dart';
-
 import '../services/local_db_service.dart';
 
 class SitrepTab extends StatefulWidget {
@@ -20,11 +20,22 @@ class _SitrepTabState extends State<SitrepTab> {
   bool _isLoading = true;
   bool _isExtracting = false;
   String _searchQuery = '';
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadCacheAndFetch();
+    // Programar refresco automático en segundo plano cada 45 segundos
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      _loadData();
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadCacheAndFetch() async {
@@ -44,33 +55,61 @@ class _SitrepTabState extends State<SitrepTab> {
 
   Future<void> _loadData() async {
     if (_news.isEmpty) setState(() => _isLoading = true);
-    var data = await CobaltoApiService.fetchNews();
 
-    // Si el servidor no retorna datos (offline o apagado), ejecutar extracción directa en el teléfono
-    if (data.isEmpty) {
+    // 1. Obtener noticias locales guardadas en SQLite
+    final localEntries = await LocalDbService.getEntries();
+
+    // 2. Intentar consultar noticias frescas del servidor
+    final remoteNews = await CobaltoApiService.fetchNews();
+
+    final List<Map<String, dynamic>> combined = [];
+    final Set<String> seenTitles = {};
+
+    // Agregar noticias del servidor primero (si existen)
+    if (remoteNews.isNotEmpty) {
+      final List<Map<String, dynamic>> castedRemote = List<Map<String, dynamic>>.from(remoteNews);
+      for (final item in castedRemote) {
+        final title = item['title']?.toString() ?? '';
+        if (title.isNotEmpty && !seenTitles.contains(title)) {
+          seenTitles.add(title);
+          combined.add(item);
+        }
+      }
+      // Guardar noticias remotas en la BD local SQLite para modo offline
+      await LocalDbService.insertEntries(castedRemote);
+    }
+
+    // Agregar noticias locales de SQLite que no estén duplicadas
+    for (final item in localEntries) {
+      final title = item['title']?.toString() ?? '';
+      if (title.isNotEmpty && !seenTitles.contains(title)) {
+        seenTitles.add(title);
+        combined.add(item);
+      }
+    }
+
+    // Si todo sigue vacío, intentar extracción directa local en el teléfono
+    if (combined.isEmpty) {
       final localExtracted = await LocalExtractorService.extractDirectlyOnDevice();
-      if (localExtracted.isNotEmpty) {
-        data = localExtracted;
-      } else {
-        // Reintentar leer almacenamiento SQLite local
-        data = await LocalDbService.getEntries();
+      for (final item in localExtracted) {
+        final title = item['title']?.toString() ?? '';
+        if (title.isNotEmpty && !seenTitles.contains(title)) {
+          seenTitles.add(title);
+          combined.add(item);
+        }
       }
     }
 
     if (mounted) {
-      if (data.isNotEmpty) {
-        setState(() {
-          _news = data;
-          _applyFilter();
-          _isLoading = false;
-        });
+      setState(() {
+        _news = combined;
+        _applyFilter();
+        _isLoading = false;
+      });
 
-        // Guardar en caché local
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('cached_sitrep_news', json.encode(data));
-      } else {
-        setState(() => _isLoading = false);
-      }
+      // Respaldar caché en SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_sitrep_news', json.encode(combined));
     }
   }
 

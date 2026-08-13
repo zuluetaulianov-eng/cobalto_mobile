@@ -83,6 +83,19 @@ El instalador APK generado se ubicará en:
 
 ---
 
+## 🔮 Próximas Funcionalidades Tácticas (Roadmap)
+
+### 🚨 Sistema de Alertas Sonoras y Notificaciones por Severidad Táctica
+Evolución planificada para el módulo de notificaciones nativas en Android (`flutter_local_notifications`):
+- **Clasificación por Nivel de Severidad de Palabras Clave**:
+  - 🟢 **LEVE (`LOW_PRIORITY`)**: Registro e ingesta silenciosa en el almacenamiento SQLite local.
+  - 🟡 **MEDIANA (`DEFAULT_PRIORITY`)**: Notificación de sistema estándar sin interrupción de audio.
+  - 🟠 **GRAVE (`HIGH_PRIORITY`)**: Notificación táctica con audio estándar y vibración corta.
+  - 🔴 **CRÍTICA (`CRITICAL_ALERT`)**: Alarma sonora táctica de alta prioridad, vibración pulsante continua (`[0, 500, 200, 500]`) y aviso emergente prioritario (*Heads-Up Banner*) visible sobre cualquier aplicación o pantalla de bloqueo.
+- **Motor de Intercepción en Tiempo Real (Alert Engine)**: Evaluación automática del feed OSINT, SITREP e informes de campo contra la matriz de severidades configuradas por el operador en el panel de Ajustes.
+
+---
+
 ## 📄 Licencia y Seguridad
 Uso reservado para investigación OSINT, análisis situacional y gestión de inteligencia operacional.  
 **Desarrollado por el Ecosistema COBALTO HUB.**

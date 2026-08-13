@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'local_db_service.dart';
+
 class LocalExtractorService {
   static const List<Map<String, String>> defaultRssSources = [
     // Internacional & Geopolítica
@@ -125,31 +127,8 @@ class LocalExtractorService {
       // Ordenar por novedades
       extracted.sort((a, b) => (b['published'] ?? '').compareTo(a['published'] ?? ''));
 
-      // Guardar en caché local de SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final existingStr = prefs.getString('cached_sitrep_news');
-      List<dynamic> combined = [];
-      if (existingStr != null && existingStr.isNotEmpty) {
-        try {
-          combined = json.decode(existingStr);
-        } catch (_) {}
-      }
-
-      // Evitar duplicados por título
-      final Set<String> existingTitles = combined.map((e) => (e['title'] ?? '').toString()).toSet();
-      for (final newEntry in extracted) {
-        if (!existingTitles.contains(newEntry['title'])) {
-          combined.insert(0, newEntry);
-          existingTitles.add(newEntry['title']);
-        }
-      }
-
-      // Limitar a máximo 200 entradas en el teléfono
-      if (combined.length > 200) {
-        combined = combined.sublist(0, 200);
-      }
-
-      await prefs.setString('cached_sitrep_news', json.encode(combined));
+      // Guardar en la base de datos local SQLite (cobalto_edge.db) + SharedPreferences fallback
+      await LocalDbService.insertEntries(extracted);
     }
 
     return extracted;

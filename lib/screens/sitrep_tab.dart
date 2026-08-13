@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/local_extractor_service.dart';
 
+import '../services/local_db_service.dart';
+
 class SitrepTab extends StatefulWidget {
   const SitrepTab({super.key});
 
@@ -26,20 +28,14 @@ class _SitrepTabState extends State<SitrepTab> {
   }
 
   Future<void> _loadCacheAndFetch() async {
-    // 1. Cargar caché local offline primero
-    final prefs = await SharedPreferences.getInstance();
-    final cachedStr = prefs.getString('cached_sitrep_news');
-    if (cachedStr != null && cachedStr.isNotEmpty) {
-      try {
-        final decoded = json.decode(cachedStr);
-        if (decoded is List) {
-          setState(() {
-            _news = decoded;
-            _applyFilter();
-            _isLoading = false;
-          });
-        }
-      } catch (_) {}
+    // 1. Cargar almacenamiento SQLite local (cobalto_edge.db)
+    final localDbNews = await LocalDbService.getEntries();
+    if (localDbNews.isNotEmpty) {
+      setState(() {
+        _news = localDbNews;
+        _applyFilter();
+        _isLoading = false;
+      });
     }
 
     // 2. Intentar obtener datos frescos del servidor o extracción directa
@@ -56,14 +52,8 @@ class _SitrepTabState extends State<SitrepTab> {
       if (localExtracted.isNotEmpty) {
         data = localExtracted;
       } else {
-        // Reintentar leer caché local de SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        final cachedStr = prefs.getString('cached_sitrep_news');
-        if (cachedStr != null && cachedStr.isNotEmpty) {
-          try {
-            data = json.decode(cachedStr);
-          } catch (_) {}
-        }
+        // Reintentar leer almacenamiento SQLite local
+        data = await LocalDbService.getEntries();
       }
     }
 

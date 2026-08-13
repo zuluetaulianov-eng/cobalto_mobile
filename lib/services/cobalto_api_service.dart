@@ -226,4 +226,52 @@ class CobaltoApiService {
     }
     return 'OFFLINE_MODE';
   }
+
+  // ── MÉTODOS DE SUB-ROUTERS (HUMINT, FININT, PREDICTIVE, ENTITIES) ──
+
+  static Future<Map<String, dynamic>> sendHumintReport(Map<String, dynamic> reportData) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/api/humint/report'),
+            headers: _headers,
+            body: json.encode(reportData),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true, 'data': json.decode(response.body)};
+      }
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+    return {'success': false, 'error': 'No se pudo enviar el reporte HUMINT al servidor.'};
+  }
+
+  static Future<Map<String, dynamic>> fetchPredictiveScore() async {
+    try {
+      final response = await http
+          .get(Uri.parse('${ApiConfig.baseUrl}/api/predictive/score'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  static Future<Map<String, dynamic>> fetchEntityStats() async {
+    try {
+      final response = await http
+          .get(Uri.parse('${ApiConfig.baseUrl}/api/entities/stats'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+    } catch (_) {}
+    return {};
+  }
 }
+

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'sitrep_tab.dart';
 import 'map_tab.dart';
 import 'alerts_tab.dart';
+import 'humint_tab.dart';
 import 'recon_tab.dart';
 import 'entity_search_tab.dart';
 import 'ai_chat_tab.dart';
@@ -22,6 +23,7 @@ class _MainScreenState extends State<MainScreen> {
     SitrepTab(),
     MapTab(),
     AlertsTab(),
+    HumintTab(),
     ReconTab(),
     EntitySearchTab(),
     AiChatTab(),
@@ -33,6 +35,7 @@ class _MainScreenState extends State<MainScreen> {
     '📰 SITREP GLOBAL',
     '🗺️ MAPA TÁCTICO UNIFICADO',
     '⚠️ GESTIÓN DE INCIDENTES',
+    '🎯 RECOLECCIÓN HUMINT DE CAMPO',
     '🛠️ RECON TOOLKIT (OSINT)',
     '🔍 ENTIDADES & SANCIÓNES OFAC',
     '🤖 IA COBALTO DEBATE',
@@ -98,8 +101,8 @@ class _MainScreenState extends State<MainScreen> {
         selectedItemColor: const Color(0xFF00E5FF),
         unselectedItemColor: Colors.white38,
         type: BottomNavigationBarType.fixed,
-        selectedFontSize: 9,
-        unselectedFontSize: 9,
+        selectedFontSize: 8,
+        unselectedFontSize: 8,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.newspaper),
@@ -112,6 +115,10 @@ class _MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.warning_amber_rounded),
             label: 'Alertas',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.my_location),
+            label: 'HUMINT',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.build),
@@ -138,3 +145,4 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 }
+

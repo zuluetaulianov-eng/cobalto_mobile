@@ -21,14 +21,15 @@
 
 ---
 
-## 🏛️ Arquitectura de la Interfaz (8 Pestañas Tácticas)
+## 🏛️ Arquitectura de la Interfaz (9 Pestañas Tácticas)
 
 | Icono | Pestaña | Propósito Táctico |
 |---|---|---|
-| 📰 | **SitRep** | Feed de novedades con filtrado por relevancia e imágenes destacadas. |
+| 📰 | **SitRep** | Feed de novedades con filtrado por relevancia, persistencia SQLite `cobalto_edge.db` e imágenes destacadas. |
 | 🗺️ | **Mapa** | Cartografía interactiva Leaflet Dark Matter con capas filtrables. |
 | ⚠️ | **Alertas** | Sistema de criticidad heurística local (🔴 Crítica, 🟠 Alta, 🟡 Urgente). |
-| 🛠️ | **Recon** | Kit OSINT de geolocalización, WHOIS, DNS y CVEs. |
+| 🎯 | **HUMINT** | Captura de reportes de campo con coordenadas GPS, fotos, nivel de amenaza y sync híbrido. |
+| 🛠️ | **Recon** | Kit OSINT de geolocalización, WHOIS, DNS y CVEs (Modo directo e integración OSIRIS). |
 | 🔍 | **OFAC** | Verificador de sanciones globales y trazabilidad Blockchain. |
 | 🤖 | **IA Chat** | Consola táctica interactiva conectada a Ollama / Asistente Local. |
 | 📡 | **Vivo** | Telemetría de sismos USGS y sensores situacionales. |

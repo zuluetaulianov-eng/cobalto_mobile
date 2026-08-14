@@ -4,12 +4,14 @@ import '../config/api_config.dart';
 import '../services/crypto_vault_service.dart';
 import '../services/dead_man_switch_service.dart';
 import '../services/gps_service.dart';
+import '../services/local_auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/settings_persistence_service.dart';
 import '../services/stealth_service.dart';
 import '../services/tactical_camera_service.dart';
 import '../services/voice_service.dart';
 import '../services/widget_service.dart';
+import '../widgets/operator_credentials_dialog.dart';
 import '../widgets/settings_components.dart';
 
 class SettingsTab extends StatefulWidget {
@@ -49,6 +51,7 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   bool _isSaving = false;
   bool? _isConnected;
   String _statusMessage = 'Cargando ajustes tácticos...';
+  String _operatorUsername = '';
 
   final List<String> _ollamaModels = [
     'llama3.2',
@@ -85,12 +88,14 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
 
   Future<void> _loadAllSettings() async {
     final result = await SettingsPersistenceService.loadSettings();
+    final operatorName = await LocalAuthService.getUsername() ?? '';
 
     if (mounted) {
       setState(() {
         _keywords = result.keywords;
         _sources = result.sources;
         _isConnected = result.connected;
+        _operatorUsername = operatorName;
         _statusMessage = result.connected == true
             ? 'Sincronizado con Estación Base PC'
             : 'Modo Autónomo Local (Dispositivo)';
@@ -144,6 +149,110 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   Future<void> _removeSource(String url) async {
     await SettingsPersistenceService.removeSource(url);
     _loadAllSettings();
+  }
+
+  // --- EDICIÓN DE OPERADOR LOCAL ---
+
+  Widget _buildOperatorCard() {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141824),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.badge_outlined, color: Color(0xFF00E5FF), size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  _operatorUsername.isEmpty ? 'Sin operador registrado' : 'Operador: $_operatorUsername',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TacticalActionButton(
+                  icon: Icons.person,
+                  label: 'CAMBIAR NOMBRE',
+                  color: const Color(0xFF00E5FF),
+                  onPressed: _operatorUsername.isEmpty ? null : () => _editOperatorUsername(),
+                  enabled: _operatorUsername.isNotEmpty,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TacticalActionButton(
+                  icon: Icons.password,
+                  label: 'CAMBIAR CLAVE',
+                  color: const Color(0xFF00FFAA),
+                  onPressed: _operatorUsername.isEmpty ? null : () => _editOperatorPassword(),
+                  enabled: _operatorUsername.isNotEmpty,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editOperatorUsername() async {
+    final result = await OperatorCredentialsDialog.show(
+      context,
+      editingUsername: true,
+      currentUsername: _operatorUsername,
+    );
+    if (result == OperatorEditResult.changed) {
+      final newName = await LocalAuthService.getUsername() ?? '';
+      await ApiConfig.saveConfig(
+        ApiConfig.baseUrl,
+        newName,
+        ApiConfig.password,
+        token: ApiConfig.authToken,
+      );
+      await _loadAllSettings();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Nombre de operador actualizado.'),
+            backgroundColor: Color(0xFF00FFAA),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _editOperatorPassword() async {
+    final result = await OperatorCredentialsDialog.show(
+      context,
+      editingUsername: false,
+      currentUsername: _operatorUsername,
+    );
+    if (result == OperatorEditResult.changed) {
+      await _loadAllSettings();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Contraseña de operador actualizada.'),
+            backgroundColor: Color(0xFF00FFAA),
+          ),
+        );
+      }
+    }
   }
 
   // --- GUARDADO GENERAL ---
@@ -276,6 +385,10 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        const SettingsSectionTitle('🪪 OPERADOR LOCAL (ACCESO A LA APP)'),
+        const SizedBox(height: 6),
+        _buildOperatorCard(),
+        const SizedBox(height: 16),
         const SettingsSectionTitle('📡 MODO OPERATIVO DE ENLACE'),
         const SizedBox(height: 8),
         Row(

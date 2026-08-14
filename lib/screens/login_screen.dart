@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../services/cobalto_api_service.dart';
+import '../services/local_auth_service.dart';
 import 'main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,9 +15,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   late TextEditingController _urlController;
   late TextEditingController _userController;
   late TextEditingController _passController;
+  late TextEditingController _confirmPassController;
   late AnimationController _ringController;
 
   bool _isLoggingIn = false;
+  bool _isCreateMode = false;
   String _errorMsg = '';
 
   @override
@@ -25,11 +28,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _urlController = TextEditingController(text: ApiConfig.baseUrl);
     _userController = TextEditingController(text: ApiConfig.username);
     _passController = TextEditingController(text: ApiConfig.password);
+    _confirmPassController = TextEditingController();
 
     _ringController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat();
+
+    _initAuthMode();
+  }
+
+  Future<void> _initAuthMode() async {
+    final hasUser = await LocalAuthService.hasLocalUser();
+    final storedUser = hasUser ? await LocalAuthService.getUsername() : null;
+    if (mounted) {
+      setState(() {
+        _isCreateMode = !hasUser;
+        if (storedUser != null && storedUser.isNotEmpty) {
+          _userController.text = storedUser;
+          _passController.clear();
+        }
+      });
+    }
   }
 
   @override
@@ -37,6 +57,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _urlController.dispose();
     _userController.dispose();
     _passController.dispose();
+    _confirmPassController.dispose();
     _ringController.dispose();
     super.dispose();
   }
@@ -44,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   Future<void> _handleLogin() async {
     final url = _urlController.text.trim();
     final user = _userController.text.trim();
-    final pass = _passController.text.trim();
+    final pass = _passController.text;
 
     if (url.isEmpty || user.isEmpty || pass.isEmpty) {
       setState(() => _errorMsg = 'Por favor complete todos los campos.');
@@ -56,24 +77,47 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       _errorMsg = '';
     });
 
-    // Guardar URL y credenciales de conexión
-    await ApiConfig.saveConfig(url, user, pass);
-
-    // Intentar Login contra backend FastAPI (/api/login)
-    final res = await CobaltoApiService.login(user, pass);
-
-    if (mounted) {
-      if (res['success'] == true) {
-        // Redirigir a la interfaz principal
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-        );
-      } else {
+    // En modo creación se registra la cuenta local de operador.
+    if (_isCreateMode) {
+      final confirm = _confirmPassController.text;
+      if (pass != confirm) {
         setState(() {
           _isLoggingIn = false;
-          _errorMsg = res['error'] ?? 'Acceso denegado. Verifique servidor y credenciales.';
+          _errorMsg = 'Las contraseñas no coinciden.';
         });
+        return;
       }
+      try {
+        await LocalAuthService.createUser(user, pass);
+      } catch (e) {
+        setState(() {
+          _isLoggingIn = false;
+          _errorMsg = e is ArgumentError ? e.message.toString() : 'No se pudo crear el operador: $e';
+        });
+        return;
+      }
+    } else {
+      // Verificar contra la cuenta local primero (funciona offline).
+      final localOk = await LocalAuthService.verifyLogin(user, pass);
+      if (!localOk) {
+        setState(() {
+          _isLoggingIn = false;
+          _errorMsg = 'Credenciales incorrectas. Verifique usuario y contraseña.';
+        });
+        return;
+      }
+    }
+
+    // Guardar URL y credenciales de conexión al servidor
+    await ApiConfig.saveConfig(url, user, pass);
+
+    // Intentar autenticación JWT contra el backend (si está disponible).
+    await CobaltoApiService.login(user, pass);
+
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
     }
   }
 
@@ -140,9 +184,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'v9.0 — ACCESO RESTRINGIDO TÁCTICO',
-                    style: TextStyle(
+                  Text(
+                    _isCreateMode
+                        ? 'v9.0 — REGISTRO DE OPERADOR LOCAL'
+                        : 'v9.0 — ACCESO RESTRINGIDO TÁCTICO',
+                    style: const TextStyle(
                       color: Colors.white38,
                       fontSize: 10,
                       letterSpacing: 2,
@@ -238,6 +284,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           obscureText: true,
                         ),
 
+                        if (_isCreateMode) ...[
+                          const SizedBox(height: 14),
+                          // Confirmar Contraseña (solo al crear cuenta)
+                          _buildInputField(
+                            controller: _confirmPassController,
+                            label: 'CONFIRMAR CONTRASEÑA',
+                            icon: Icons.lock_outline,
+                            obscureText: true,
+                          ),
+                        ],
+
                         if (_errorMsg.isNotEmpty) ...[
                           const SizedBox(height: 14),
                           Container(
@@ -282,9 +339,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     color: Colors.black,
                                   ),
                                 )
-                              : const Text(
-                                  'INGRESAR AL SISTEMA',
-                                  style: TextStyle(
+                              : Text(
+                                  _isCreateMode
+                                      ? 'CREAR OPERADOR Y INGRESAR'
+                                      : 'INGRESAR AL SISTEMA',
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 13,
                                     letterSpacing: 2,
@@ -292,6 +351,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   ),
                                 ),
                         ),
+
+                        const SizedBox(height: 10),
+                        if (_isCreateMode)
+                          const Text(
+                            'La cuenta se registra solo en este dispositivo (acceso offline).',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 9,
+                              fontFamily: 'monospace',
+                            ),
+                          )
+                        else
+                          Text(
+                            'Operador: ${_userController.text.trim().isEmpty ? 'local' : _userController.text.trim()}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 9,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
                       ],
                     ),
                   ),

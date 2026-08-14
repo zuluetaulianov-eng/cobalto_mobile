@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../services/cobalto_api_service.dart';
-import 'main_screen.dart';
 import 'login_screen.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,7 +15,7 @@ class BootScreen extends StatefulWidget {
 class _BootScreenState extends State<BootScreen> with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   final List<String> _logs = [];
-  bool _hasError = false;
+  final bool _hasError = false;
 
   @override
   void initState() {
@@ -49,13 +48,13 @@ class _BootScreenState extends State<BootScreen> with SingleTickerProviderStateM
     await ApiConfig.loadConfig();
 
     await Future.delayed(const Duration(milliseconds: 500));
-    _addLog('[+] ESTABLECIENDO ENLACE CON SERVIDOR CENTRAL COBALTO...');
+    _addLog('[+] VERIFICANDO ENLACE CON SERVIDOR CENTRAL (SI DISPONIBLE)...');
 
     bool isOk = await CobaltoApiService.testConnection();
 
     if (isOk) {
       await Future.delayed(const Duration(milliseconds: 400));
-      _addLog('[+] AUTENTICACIÓN JWT Y SALUD DEL SERVIDOR: [OK]');
+      _addLog('[+] SALUD DEL SERVIDOR: [OK] — JWT SE SOLICITARÁ AL INGRESAR.');
 
       final prefs = await SharedPreferences.getInstance();
       final cachedStr = prefs.getString('cached_sitrep_news');
@@ -66,27 +65,19 @@ class _BootScreenState extends State<BootScreen> with SingleTickerProviderStateM
       } else {
         _addLog('[+] CACHÉ LOCAL DISPONIBLE. MODO DE CARGA ULTRA-RÁPIDO ACTIVADO.');
       }
-
-      await Future.delayed(const Duration(milliseconds: 400));
-      _addLog('[+] INICIALIZANDO MÓDULOS DE INTELIGENCIA Y TELEMETRÍA...');
-      await Future.delayed(const Duration(milliseconds: 400));
-
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-        );
-      }
     } else {
-      await Future.delayed(const Duration(milliseconds: 600));
-      _addLog('[-] AUTENTICACIÓN REQUERIDA O CONEXIÓN NO VERIFICADA.');
-      setState(() => _hasError = true);
+      _addLog('[-] SERVIDOR NO DISPONIBLE: MODO AUTÓNOMO LOCAL.');
+    }
 
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
+    await Future.delayed(const Duration(milliseconds: 400));
+    _addLog('[+] INICIALIZANDO MÓDULOS DE INTELIGENCIA Y TELEMETRÍA...');
+    await Future.delayed(const Duration(milliseconds: 400));
+
+    // El login (local o contra servidor) siempre es la puerta de entrada.
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
     }
   }
 

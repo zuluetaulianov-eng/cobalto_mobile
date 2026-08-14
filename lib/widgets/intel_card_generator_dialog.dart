@@ -135,8 +135,8 @@ class _IntelCardGeneratorDialogState extends State<IntelCardGeneratorDialog> {
         throw Exception("No se pudo obtener el canvas de la imagen.");
       }
 
-      // Renderizar imagen PNG HD (pixelRatio 3.0 para alta nitidez)
-      ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      // Renderizar imagen PNG HD (pixelRatio 2.0 equilibrado para nitidez y bajo consumo de RAM)
+      ui.Image image = await boundary.toImage(pixelRatio: 2.0);
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       if (byteData == null) throw Exception("Error convirtiendo imagen a PNG.");
 

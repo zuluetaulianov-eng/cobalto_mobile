@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../services/gps_service.dart';
 import '../services/tactical_camera_service.dart';
+import '../services/tactical_ocr_service.dart';
 
 class ReconTab extends StatefulWidget {
   const ReconTab({super.key});
@@ -244,6 +245,30 @@ class _ReconTabState extends State<ReconTab> {
                                       File(_lastCapturedPhotoPath!),
                                       width: double.infinity,
                                       fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton.icon(
+                                    onPressed: () async {
+                                      final ocrResult = await TacticalOcrService.processImage(_lastCapturedPhotoPath!);
+                                      if (mounted) {
+                                        setState(() {
+                                          _resultData = {
+                                            'ocr_full_text': ocrResult.fullText,
+                                            'detected_lines': ocrResult.lines,
+                                            'detected_coordinates': ocrResult.coordinates,
+                                            'detected_codes_or_plates': ocrResult.detectedCodes,
+                                          };
+                                        });
+                                      }
+                                    },
+                                    icon: const Icon(Icons.document_scanner, size: 16),
+                                    label: const Text('ESCANEAR TEXTO / MATRÍCULA / CÓDIGO (OCR)', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                                      foregroundColor: const Color(0xFF00E5FF),
+                                      side: const BorderSide(color: Color(0xFF00E5FF)),
+                                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                                     ),
                                   ),
                                   const SizedBox(height: 12),

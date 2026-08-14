@@ -8,6 +8,8 @@ import '../services/gps_service.dart';
 import '../services/voice_service.dart';
 import '../services/crypto_vault_service.dart';
 import '../services/tactical_camera_service.dart';
+import '../services/stealth_service.dart';
+import '../services/dead_man_switch_service.dart';
 import '../services/widget_service.dart';
 
 class SettingsTab extends StatefulWidget {
@@ -783,6 +785,56 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
             backgroundColor: const Color(0xFF5E5CE6).withOpacity(0.2),
             foregroundColor: const Color(0xFF5E5CE6),
             side: const BorderSide(color: Color(0xFF5E5CE6)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () {
+            StealthService().toggleStealth();
+            final isActive = StealthService().isStealthActive;
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(isActive ? '🥷 MODO SIGILO Y VISIÓN NOCTURNA (NVG) ACTIVADO.' : '☀️ MODO C4I ESTÁNDAR RESTAURADO.'),
+                  backgroundColor: isActive ? const Color(0xFFFF1E1E) : const Color(0xFF00E5FF),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.visibility_off, size: 18),
+          label: const Text('CONMUTAR MODO SIGILO / VISIÓN NOCTURNA (NVG)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF3B30).withOpacity(0.2),
+            foregroundColor: const Color(0xFFFF3B30),
+            side: const BorderSide(color: Color(0xFFFF3B30)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () {
+            final service = DeadManSwitchService();
+            if (service.isActive) {
+              service.stopMonitoring();
+            } else {
+              service.startMonitoring();
+            }
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(service.isActive ? '🚨 MONITOR HOMBRE MUERTO ACTIVADO (Detección de Caídas).' : '⏸️ Monitor de hombre muerto pausado.'),
+                  backgroundColor: service.isActive ? const Color(0xFFFF9500) : const Color(0xFF8E8E93),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.warning_amber_rounded, size: 18),
+          label: const Text('PROBAR MONITOR HOMBRE MUERTO / INMOVILIDAD (SOS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF9500).withOpacity(0.2),
+            foregroundColor: const Color(0xFFFF9500),
+            side: const BorderSide(color: Color(0xFFFF9500)),
             padding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),

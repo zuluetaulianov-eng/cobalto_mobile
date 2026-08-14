@@ -6,7 +6,7 @@
 [![Security](https://img.shields.io/badge/Security-AES--256%20KEYSTORE-30D158?style=for-the-badge)](https://github.com)
 [![Status](https://img.shields.io/badge/Status-ESTABLE%20%26%20OPTIMIZADO-00FFAA?style=for-the-badge)](https://github.com)
 
-**COBALTO MOBILE** es una plataforma autónoma de inteligencia táctica, OSINT y monitoreo situacional diseñada para dispositivos Android. Funciona de manera **100% independiente en el dispositivo (Air-Gapped / Offline)** realizando scraping e ingesta local de noticias, o en modo **Enlace Estación Base** sincronizándose con el ecosistema central de COBALTO HUB.
+**COBALTO MOBILE** es una plataforma autónoma de inteligencia táctica, OSINT y monitoreo situacional diseñada para dispositivos Android. Permite operar **independiente en el dispositivo (Offline / Air-Gapped)** realizando scraping e ingesta local de noticias, o en modo **Enlace Estación Base** sincronizándose con el ecosistema central de COBALTO HUB.
 
 ---
 
@@ -15,7 +15,7 @@
 ```mermaid
 graph TD
     A["✅ Fase 1: GPS & Geofencing Táctico"] --> B["✅ Fase 2: Voz Táctica STT / TTS"]
-    B --> C["✅ Fase 3: Bóveda Cifrada AES-256"]
+    B --> C["✅ Fase 3: Bóveda Cifrada AES-256-GCM"]
     C --> D["✅ Fase 4: Cámara Telemetría Isolate"]
     D --> E["✅ Fase 5: Widget Nativo Pantalla Inicio"]
     E --> F["✅ Capacidad Táctica: Modo Sigilo (NVG)"]
@@ -33,7 +33,7 @@ graph TD
 
 ### 3. 🚨 Monitor de Hombre Muerto / Inmovilidad (`DeadManSwitchService`)
 - Muestreo optimizado a 10Hz del acelerómetro para detectar impactos bruscos (>2.8G libre + gravedad) o caídas del operador.
-- Desencadena una cuenta regresiva de emergencia de 30 segundos con opción de cancelación manual antes de transmitir la señal de SOS.
+- Desencadena una cuenta regresiva de emergencia de **30 segundos** con opción de cancelación manual antes de transmitir la señal de SOS a la estación base (endpoint `/api/sos`, con fallback al reporte HUMINT) y registro local cifrado del evento.
 
 ### 4. ⚡ Estabilización del Sistema & Aislamiento de Hilos (Isolates)
 - **Procesamiento de Imágenes en Isolates (`compute`)**: La decodificación y estampado de telemetría GPS/UTC en fotos de cámara se ejecuta en Isolates secundarios, previniendo bloqueos del hilo principal (ANR).
@@ -61,6 +61,13 @@ graph TD
 
 ---
 
+## 🛡️ Seguridad
+
+- **Cifrado de datos en reposo:** bóveda **AES-256-GCM** (autenticación AEAD) con clave maestra de 32 bytes generada aleatoriamente y custodiada en el Android Keystore / Secure Storage. Los datos cifrados usan formato versionado `ENCv2:`; los registros legacy se migran automáticamente.
+- **Credenciales de operador:** se inyectan en tiempo de build mediante `--dart-define` (nunca embebidas en el repositorio) y la contraseña se persiste únicamente en Secure Storage, no en SharedPreferences en claro.
+- **Autenticación:** el acceso exige un JWT emitido por `/api/login`. No existen tokens de override ni bypass para credenciales por defecto.
+- **Transporte:** en builds de producción el tráfico en claro (HTTP) está prohibido por `network_security_config`; solo el build de DEBUG permite cleartext hacia la LAN de desarrollo y Ollama. Para despliegues productivos use TLS/HTTPS.
+
 ## 📋 Requisitos de Sistema
 
 - **SDK de Flutter:** 3.19.0 o superior
@@ -82,6 +89,14 @@ cd cobalto-mobile
 ```bash
 flutter pub get
 ```
+
+### 3. (Opcional) Inyectar credenciales por defecto en tiempo de build
+```bash
+flutter build apk --release \
+  --dart-define=COBALTO_DEFAULT_USERNAME=operador \
+  --dart-define=COBALTO_DEFAULT_PASSWORD=tusecreto
+```
+Sin estos define, los campos de credenciales inician vacíos.
 
 ### 3. Verificar sintaxis
 ```bash

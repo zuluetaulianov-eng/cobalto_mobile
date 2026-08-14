@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../services/app_logger.dart';
 
 class EntitySearchTab extends StatefulWidget {
   const EntitySearchTab({super.key});
@@ -75,7 +76,9 @@ class _EntitySearchTabState extends State<EntitySearchTab> {
             'details': 'Balance en cadena: $balance BTC | Total Tx: ${data['n_tx'] ?? 0}',
           });
         }
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.warn('Fallo la consulta blockchain para $q.', tag: 'OFAC', error: e);
+      }
     }
 
     if (mounted) {

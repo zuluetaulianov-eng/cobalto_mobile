@@ -2,6 +2,10 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
+import 'cobalto_api_service.dart';
+import 'gps_service.dart';
+import 'local_db_service.dart';
+import 'notification_service.dart';
 import 'stealth_service.dart';
 
 /// Monitor Táctico de Hombre Muerto (Dead Man's Switch).
@@ -18,7 +22,10 @@ class DeadManSwitchService extends ChangeNotifier {
   bool _isEmergencyAlertActive = false;
   bool get isEmergencyAlertActive => _isEmergencyAlertActive;
 
-  int _countdownSeconds = 15;
+  // Cuenta regresiva estándar para respuesta del operador antes de emitir la señal SOS.
+  static const int emergencyCountdownSeconds = 30;
+
+  int _countdownSeconds = emergencyCountdownSeconds;
   int get countdownSeconds => _countdownSeconds;
   Timer? _countdownTimer;
 
@@ -57,10 +64,17 @@ class DeadManSwitchService extends ChangeNotifier {
   /// Inicia la cuenta regresiva de alerta de emergencia
   void _triggerEmergencyCountdown() {
     _isEmergencyAlertActive = true;
-    _countdownSeconds = 15;
+    _countdownSeconds = emergencyCountdownSeconds;
     notifyListeners();
 
     StealthService().triggerHapticPattern(DEFCONLevel.critical);
+    NotificationService.showAlertNotification(
+      title: 'CAÍDA DETECTADA — VENTANA SOS ABIERTA',
+      body: 'Respuesta automática de emergencia en ${emergencyCountdownSeconds}s. Cancele si está consciente.',
+      level: 'CRÍTICA',
+      deduplicationKey: 'deadman|countdown',
+      showFloatingOverlay: true,
+    );
 
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -76,10 +90,41 @@ class DeadManSwitchService extends ChangeNotifier {
     });
   }
 
-  /// Simula el envío de alerta SOS automática a la base táctica
-  void _sendAutomaticSOS() {
-    // Alerta SOS activada por falta de respuesta del operador
+  /// Transmite la señal SOS a la base táctica (si hay enlace) y queda registrada localmente.
+  Future<void> _sendAutomaticSOS() async {
     StealthService().triggerHapticPattern(DEFCONLevel.critical);
+
+    final position = await GpsService.getCurrentPosition();
+    final Map<String, dynamic> sosData = {
+      'type': 'sos',
+      'severity': 'CRITICAL',
+      'alert': 'OPERATOR DOWN - DROP/LOSS OF CONSCIOUSNESS',
+      'timestamp': DateTime.now().toIso8601String(),
+      'lat': position?.latitude ?? 0.0,
+      'lng': position?.longitude ?? 0.0,
+      'source': 'dead_man_switch',
+    };
+
+    await NotificationService.showAlertNotification(
+      title: 'SEÑAL SOS TRANSMITIDA',
+      body: 'Pérdida de respuesta del operador. Coordenadas: '
+          '${position != null ? '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}' : 'no disponibles'}.',
+      level: 'CRÍTICA',
+      deduplicationKey: 'deadman|sos',
+      showFloatingOverlay: true,
+    );
+
+    // Registro local cifrado (reporte de campo CRITICAL) para disponibilidad offline.
+    await LocalDbService.saveFieldReport({
+      'title': '🚨 SOS AUTOMÁTICO (DeadManSwitch)',
+      'description': 'OPERATOR DOWN - Pérdida de respuesta durante ${emergencyCountdownSeconds}s.',
+      'threat_level': 'CRITICAL',
+      'lat': position?.latitude ?? 0.0,
+      'lng': position?.longitude ?? 0.0,
+    });
+
+    // Transmisión a la base (fire-and-forget; no bloquea la UI).
+    unawaited(CobaltoApiService.sendSosSignal(sosData));
   }
 
   /// Cancela manualmente la alerta de emergencia (Operador Consciente)

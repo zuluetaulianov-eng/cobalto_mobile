@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+
+import 'app_logger.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 class VoiceService {
@@ -125,6 +127,8 @@ class VoiceService {
     try {
       await _flutterTts.stop();
       _isSpeaking = false;
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('No se pudo detener la reproducción TTS.', tag: 'Voice', error: e);
+    }
   }
 }

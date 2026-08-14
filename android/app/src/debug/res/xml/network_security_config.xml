@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Variante DEBUG (sobrescribe res/xml/network_security_config.xml del source-set main):
+  permite tráfico en claro de forma global para desarrollo en LAN del operador
+  (servidor FastAPI local, Ollama y cualquier host de prueba).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

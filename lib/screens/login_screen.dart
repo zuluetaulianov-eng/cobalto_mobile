@@ -190,12 +190,37 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               _buildPresetChip('📱 Emulador', ApiConfig.presetEmulatorUrl),
                               const SizedBox(width: 6),
                               _buildPresetChip('💻 Localhost', ApiConfig.presetLocalhostUrl),
-                              const SizedBox(width: 6),
-                              _buildPresetChip('🌐 Zrok', ApiConfig.presetZrokUrl),
                             ],
                           ),
                         ),
                         const SizedBox(height: 14),
+
+                        // Advertencia de tráfico en claro
+                        Builder(builder: (context) {
+                          final url = _urlController.text.trim();
+                          final insecure = url.startsWith('http://');
+                          if (!insecure) return const SizedBox.shrink();
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: const [
+                                Icon(Icons.warning_amber_rounded, color: Color(0xFFFFAA00), size: 14),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Conexión HTTP (tráfico en claro). Solo aprobada para red local de desarrollo.',
+                                    style: TextStyle(
+                                      color: Color(0xFFFFAA00),
+                                      fontSize: 9,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
 
                         // Usuario
                         _buildInputField(

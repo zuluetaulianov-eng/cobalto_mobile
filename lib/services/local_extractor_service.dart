@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_logger.dart';
 import 'local_db_service.dart';
 
 class LocalExtractorService {
@@ -11,7 +12,7 @@ class LocalExtractorService {
     {'name': 'El País América', 'url': 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/america/portada'},
     {'name': 'EuropaPress Internacional', 'url': 'https://www.europapress.es/rss/rss.aspx?ch=00066'},
     {'name': 'Al Jazeera English', 'url': 'https://www.aljazeera.com/xml/rss/all.xml'},
-    {'name': 'CNN en Español', 'url': 'http://rss.cnn.com/rss/edition_americas.rss'},
+    {'name': 'CNN en Español', 'url': 'https://rss.cnn.com/rss/edition_americas.rss'},
     {'name': 'The Guardian World', 'url': 'https://www.theguardian.com/world/rss'},
     {'name': 'France 24 LatAm', 'url': 'https://www.france24.com/es/am%C3%A9rica-latina/rss'},
     // Ciberseguridad & OSINT
@@ -52,7 +53,9 @@ class LocalExtractorService {
             }
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.warn('Fuentes personalizadas corruptas; se ignoran.', tag: 'Extractor', error: e);
+      }
     }
     return sources;
   }
@@ -64,7 +67,9 @@ class LocalExtractorService {
     if (customStr != null && customStr.isNotEmpty) {
       try {
         list = json.decode(customStr);
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.warn('Fuentes personalizadas corruptas al añadir.', tag: 'Extractor', error: e);
+      }
     }
     list.add({'name': name, 'url': url});
     await prefs.setString('local_custom_sources', json.encode(list));
@@ -78,7 +83,9 @@ class LocalExtractorService {
         List<dynamic> list = json.decode(customStr);
         list.removeWhere((item) => item['url'] == url);
         await prefs.setString('local_custom_sources', json.encode(list));
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.warn('Fuentes personalizadas corruptas al eliminar.', tag: 'Extractor', error: e);
+      }
     }
   }
 
@@ -119,7 +126,7 @@ class LocalExtractorService {
           }
         }
       } catch (e) {
-        // Ignorar fuente fallida individualmente
+        AppLogger.warn('Fuente fallida en extracción local: ${src['name']}', tag: 'Extractor', error: e);
       }
     }
 
@@ -181,7 +188,9 @@ class LocalExtractorService {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('Error scrapeando canal Telegram $sourceName.', tag: 'Extractor', error: e);
+    }
     return items;
   }
 

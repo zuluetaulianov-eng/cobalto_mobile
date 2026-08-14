@@ -1,14 +1,22 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiConfig {
   static const String presetLanUrl = 'http://192.168.1.102:8083';
   static const String presetLocalhostUrl = 'http://127.0.0.1:8083';
   static const String presetEmulatorUrl = 'http://10.0.2.2:8083';
-  static const String presetZrokUrl = 'https://commandereliminatedextraction.share.zrok.io';
 
   static const String defaultBaseUrl = presetLanUrl;
-  static const String defaultUsername = 'admin';
-  static const String defaultPassword = '..21Bishamonten21..';
+
+  // Credenciales de arranque provistas únicamente en tiempo de build
+  // (--dart-define=COBALTO_DEFAULT_USERNAME=... COBALTO_DEFAULT_PASSWORD=...).
+  // Sin valores embebidos en el repositorio.
+  static const String defaultUsername =
+      String.fromEnvironment('COBALTO_DEFAULT_USERNAME', defaultValue: '');
+  static const String defaultPassword =
+      String.fromEnvironment('COBALTO_DEFAULT_PASSWORD', defaultValue: '');
+
+  static const _storage = FlutterSecureStorage();
 
   static String baseUrl = defaultBaseUrl;
   static String username = defaultUsername;
@@ -24,9 +32,17 @@ class ApiConfig {
 
   static Future<void> loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Migración: extraer credenciales legadas guardadas en claro hacia Secure Storage.
+    final legacyPass = prefs.getString('password');
+    if (legacyPass != null && legacyPass.isNotEmpty) {
+      await _storage.write(key: 'password', value: legacyPass);
+      await prefs.remove('password');
+    }
+
     baseUrl = prefs.getString('base_url') ?? defaultBaseUrl;
     username = prefs.getString('username') ?? defaultUsername;
-    password = prefs.getString('password') ?? defaultPassword;
+    password = await _storage.read(key: 'password') ?? defaultPassword;
     authToken = prefs.getString('auth_token');
     backgroundSync = prefs.getBool('background_sync') ?? true;
     wifiOnly = prefs.getBool('wifi_only') ?? false;
@@ -46,7 +62,11 @@ class ApiConfig {
     }
     await prefs.setString('base_url', baseUrl);
     await prefs.setString('username', username);
-    await prefs.setString('password', password);
+    if (newPassword.isNotEmpty) {
+      await _storage.write(key: 'password', value: newPassword);
+    } else {
+      await _storage.delete(key: 'password');
+    }
   }
 
   static Future<void> saveOllamaConfig(String host, String model) async {

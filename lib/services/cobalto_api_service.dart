@@ -1,8 +1,21 @@
-import 'dart:convert';
+﻿import 'dart:convert';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import 'app_logger.dart';
 
 class CobaltoApiService {
+  // Cliente HTTP inyectable para permitir mocks en pruebas unitarias.
+  static http.Client _client = http.Client();
+
+  @visibleForTesting
+  static set client(http.Client value) => _client = value;
+
+  @visibleForTesting
+  static void restoreDefaultClient() {
+    _client = http.Client();
+  }
+
   static Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -11,7 +24,7 @@ class CobaltoApiService {
 
   static Future<Map<String, dynamic>> login(String username, String password) async {
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('${ApiConfig.baseUrl}/api/login'),
             headers: {'Content-Type': 'application/json'},
@@ -21,35 +34,18 @@ class CobaltoApiService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data is Map && data.containsKey('token')) {
+        if (data is Map && data.containsKey('token') && data['token'].toString().isNotEmpty) {
           final token = data['token'].toString();
           await ApiConfig.setAuthToken(token);
           return {'success': true, 'token': token};
         }
       }
 
-      if (response.statusCode == 404) {
-        // El servidor no requiere autenticación obligatoria en /api/login
-        const token = 'open-access-token';
-        await ApiConfig.setAuthToken(token);
-        return {'success': true, 'token': token};
-      }
-
-      // Permite credenciales por defecto de operador
-      if (username == 'admin' && (password == '..21Bishamonten21..' || password == 'admin')) {
-        const token = 'tactical-override-token';
-        await ApiConfig.setAuthToken(token);
-        return {'success': true, 'token': token};
-      }
-
-      return {'success': false, 'error': 'Credenciales incorrectas (Status ${response.statusCode}).'};
+      return {
+        'success': false,
+        'error': 'Credenciales rechazadas por el servidor (HTTP ${response.statusCode}).',
+      };
     } catch (e) {
-      // Si la URL local es alcanzable o coincide con las credenciales de operador por defecto
-      if (username == 'admin' && (password == '..21Bishamonten21..' || password == 'admin')) {
-        const token = 'local-offline-token';
-        await ApiConfig.setAuthToken(token);
-        return {'success': true, 'token': token};
-      }
       return {'success': false, 'error': 'Error de conexión con ${ApiConfig.baseUrl}: $e'};
     }
   }
@@ -57,18 +53,18 @@ class CobaltoApiService {
   static Future<bool> testConnection() async {
     try {
       // 1. Probar salud pública (status, startup-progress o health)
-      var healthResp = await http
+      var healthResp = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/status'))
           .timeout(const Duration(seconds: 8));
 
       if (healthResp.statusCode != 200) {
-        healthResp = await http
+        healthResp = await _client
             .get(Uri.parse('${ApiConfig.baseUrl}/api/startup-progress'))
             .timeout(const Duration(seconds: 8));
       }
 
       if (healthResp.statusCode != 200) {
-        healthResp = await http
+        healthResp = await _client
             .get(Uri.parse('${ApiConfig.baseUrl}/api/health'))
             .timeout(const Duration(seconds: 8));
       }
@@ -76,7 +72,7 @@ class CobaltoApiService {
       if (healthResp.statusCode != 200) return false;
 
       // 2. Intentar autenticar si no hay token o probar endpoint protegido /api/config
-      var configResp = await http
+      var configResp = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/config'), headers: _headers)
           .timeout(const Duration(seconds: 8));
 
@@ -84,7 +80,7 @@ class CobaltoApiService {
         // Autenticar automáticamente con credenciales configuradas
         final loginRes = await login(ApiConfig.username, ApiConfig.password);
         if (loginRes['success'] == true) {
-          configResp = await http
+          configResp = await _client
               .get(Uri.parse('${ApiConfig.baseUrl}/api/config'), headers: _headers)
               .timeout(const Duration(seconds: 8));
         }
@@ -98,12 +94,12 @@ class CobaltoApiService {
 
   static Future<List<dynamic>> fetchNews() async {
     try {
-      var response = await http
+      var response = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/news'), headers: _headers)
           .timeout(const Duration(seconds: 12));
 
       if (response.statusCode != 200) {
-        response = await http
+        response = await _client
             .get(Uri.parse('${ApiConfig.baseUrl}/api/dashboard'), headers: _headers)
             .timeout(const Duration(seconds: 12));
       }
@@ -122,7 +118,7 @@ class CobaltoApiService {
 
   static Future<Map<String, dynamic>> triggerExtraction() async {
     try {
-      final response = await http
+      final response = await _client
           .post(Uri.parse('${ApiConfig.baseUrl}/api/extractor/run'), headers: _headers)
           .timeout(const Duration(seconds: 120));
       if (response.statusCode == 200) {
@@ -136,7 +132,7 @@ class CobaltoApiService {
 
   static Future<Map<String, dynamic>> fetchConfig() async {
     try {
-      final response = await http
+      final response = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/config'), headers: _headers)
           .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
@@ -150,7 +146,7 @@ class CobaltoApiService {
 
   static Future<bool> saveSystemConfig(Map<String, dynamic> configMap) async {
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('${ApiConfig.baseUrl}/api/config'),
             headers: _headers,
@@ -165,7 +161,7 @@ class CobaltoApiService {
 
   static Future<Map<String, dynamic>> fetchFeedHealth() async {
     try {
-      final response = await http
+      final response = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/health/sources'), headers: _headers)
           .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
@@ -179,7 +175,7 @@ class CobaltoApiService {
 
   static Future<List<dynamic>> fetchAlerts() async {
     try {
-      final response = await http
+      final response = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/alerts'), headers: _headers)
           .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
@@ -195,7 +191,7 @@ class CobaltoApiService {
 
   static Future<Map<String, dynamic>> fetchRealtime() async {
     try {
-      final response = await http
+      final response = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/realtime'), headers: _headers)
           .timeout(const Duration(seconds: 10));
       if (response.statusCode == 200) {
@@ -209,7 +205,7 @@ class CobaltoApiService {
 
   static Future<String> sendAiQuery(String prompt, {String persona = 'GENERAL'}) async {
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('${ApiConfig.baseUrl}/api/chat'),
             headers: _headers,
@@ -221,7 +217,8 @@ class CobaltoApiService {
         final data = json.decode(response.body);
         return data['response'] ?? data['reply'] ?? data['text'] ?? 'Sin respuesta.';
       }
-    } catch (_) {
+    } catch (e) {
+      AppLogger.warn('IA sin conexión; modo offline.', tag: 'Api', error: e);
       return 'OFFLINE_MODE';
     }
     return 'OFFLINE_MODE';
@@ -231,7 +228,7 @@ class CobaltoApiService {
 
   static Future<Map<String, dynamic>> sendHumintReport(Map<String, dynamic> reportData) async {
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('${ApiConfig.baseUrl}/api/humint/report'),
             headers: _headers,
@@ -248,29 +245,59 @@ class CobaltoApiService {
     return {'success': false, 'error': 'No se pudo enviar el reporte HUMINT al servidor.'};
   }
 
+  /// Transmite la señal SOS (Dead Man's Switch) a la estación base.
+  /// No lanza excepciones: siempre devuelve un mapa de resultado para uso en
+  /// fire-and-forget.
+  static Future<Map<String, dynamic>> sendSosSignal(Map<String, dynamic> sosData) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/api/sos'),
+            headers: _headers,
+            body: json.encode(sosData),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true};
+      }
+      // Fallback: algunos despliegues ingieren SOS vía el endpoint HUMINT.
+      if (response.statusCode == 404) {
+        return sendHumintReport(sosData);
+      }
+      return {'success': false, 'error': 'SOS rechazado (HTTP ${response.statusCode}).'};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   static Future<Map<String, dynamic>> fetchPredictiveScore() async {
     try {
-      final response = await http
+      final response = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/predictive/score'), headers: _headers)
           .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('fetchPredictiveScore sin respuesta del servidor.', tag: 'Api', error: e);
+    }
     return {};
   }
 
   static Future<Map<String, dynamic>> fetchEntityStats() async {
     try {
-      final response = await http
+      final response = await _client
           .get(Uri.parse('${ApiConfig.baseUrl}/api/entities/stats'), headers: _headers)
           .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('fetchEntityStats sin respuesta del servidor.', tag: 'Api', error: e);
+    }
     return {};
   }
 }

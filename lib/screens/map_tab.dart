@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../services/app_logger.dart';
 import '../services/local_db_service.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/gps_service.dart';
@@ -238,7 +239,9 @@ class _MapTabState extends State<MapTab> {
           try {
             final Map<String, dynamic> data = json.decode(message.message);
             _showMarkerDetailsBottomSheet(data);
-          } catch (_) {}
+          } catch (e) {
+            AppLogger.warn('Mensaje JS del mapa no descifrable.', tag: 'Map', error: e);
+          }
         },
       )
       ..setNavigationDelegate(
@@ -424,7 +427,9 @@ class _MapTabState extends State<MapTab> {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('Error cargando datos sísmicos/geográficos del mapa.', tag: 'Map', error: e);
+    }
 
     // 5. Cargar Alertas Tácticas del Servidor
     try {
@@ -454,7 +459,9 @@ class _MapTabState extends State<MapTab> {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('Error cargando alertas tácticas en el mapa.', tag: 'Map', error: e);
+    }
 
     // Actualizar contadores
     final newCounts = {

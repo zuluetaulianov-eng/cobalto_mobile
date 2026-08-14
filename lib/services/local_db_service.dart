@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_logger.dart';
 import 'crypto_vault_service.dart';
 
 class LocalDbService {
@@ -127,7 +128,8 @@ class LocalDbService {
         if (mutable['keywords_matched'] != null) {
           try {
             mutable['keywords_matched'] = json.decode(mutable['keywords_matched'].toString());
-          } catch (_) {
+          } catch (e) {
+            AppLogger.warn('Falló la decodificación de keywords_matched; se usa lista vacía.', tag: 'LocalDb', error: e);
             mutable['keywords_matched'] = [];
           }
         }
@@ -135,13 +137,16 @@ class LocalDbService {
       }).toList();
     } catch (e) {
       // Fallback a SharedPreferences
+      AppLogger.warn('SQLite no disponible para getEntries; usando fallback prefs.', tag: 'LocalDb', error: e);
       final prefs = await SharedPreferences.getInstance();
       final str = prefs.getString('cached_sitrep_news');
       if (str != null && str.isNotEmpty) {
         try {
           final decoded = json.decode(str);
           if (decoded is List) return List<Map<String, dynamic>>.from(decoded);
-        } catch (_) {}
+        } catch (e2) {
+          AppLogger.warn('Cache prefs de sitrep corrupto.', tag: 'LocalDb', error: e2);
+        }
       }
       return [];
     }
@@ -150,36 +155,44 @@ class LocalDbService {
   // ── FIELD REPORTS (HUMINT Móvil) ──
 
   static Future<void> saveFieldReport(Map<String, dynamic> report) async {
+    // Cifrar SIEMPRE antes de persistir: ni SQLite ni el fallback guardan texto plano.
+    final rawDesc = (report['description'] ?? '').toString();
+    final description = rawDesc.startsWith('ENC')
+        ? rawDesc
+        : await CryptoVaultService.encryptText(rawDesc);
+
+    final row = <String, dynamic>{
+      'id': report['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      'title': report['title'] ?? 'Reporte de Campo',
+      'description': description,
+      'threat_level': report['threat_level'] ?? 'ELEVATED',
+      'lat': report['lat'] ?? 0.0,
+      'lng': report['lng'] ?? 0.0,
+      'image_path': report['image_path'] ?? '',
+      'timestamp': report['timestamp'] ?? DateTime.now().toIso8601String(),
+      'synced': (report['synced'] == true || report['synced'] == 1) ? 1 : 0,
+    };
+
     try {
       final db = await database;
-      final rawDesc = report['description'] ?? '';
-      final encryptedDesc = await CryptoVaultService.encryptText(rawDesc);
-
       await db.insert(
         'field_reports',
-        {
-          'id': report['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-          'title': report['title'] ?? 'Reporte de Campo',
-          'description': encryptedDesc,
-          'threat_level': report['threat_level'] ?? 'ELEVATED',
-          'lat': report['lat'] ?? 0.0,
-          'lng': report['lng'] ?? 0.0,
-          'image_path': report['image_path'] ?? '',
-          'timestamp': report['timestamp'] ?? DateTime.now().toIso8601String(),
-          'synced': (report['synced'] == true || report['synced'] == 1) ? 1 : 0,
-        },
+        row,
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-    } catch (_) {
+    } catch (e) {
+      AppLogger.warn('Fallo el insert SQLite de field_report; usando fallback prefs.', tag: 'LocalDb', error: e);
       final prefs = await SharedPreferences.getInstance();
       final str = prefs.getString('local_field_reports');
       List<dynamic> list = [];
       if (str != null && str.isNotEmpty) {
         try {
           list = json.decode(str);
-        } catch (_) {}
+        } catch (e2) {
+          AppLogger.warn('Cache prefs de reportes corrupto; se reinicia.', tag: 'LocalDb', error: e2);
+        }
       }
-      list.insert(0, report);
+      list.insert(0, row);
       await prefs.setString('local_field_reports', json.encode(list));
     }
   }
@@ -194,17 +207,33 @@ class LocalDbService {
         final Map<String, dynamic> mutable = Map<String, dynamic>.from(m);
         final encDesc = mutable['description']?.toString() ?? '';
         mutable['description'] = await CryptoVaultService.decryptText(encDesc);
+
+        // Migración de registros legacy (XOR) al formato AES-GCM actual.
+        if (CryptoVaultService.isLegacyFormat(encDesc)) {
+          final upgraded = await CryptoVaultService.upgradeLegacy(encDesc);
+          if (upgraded != null && upgraded != encDesc) {
+            await db.update(
+              'field_reports',
+              {'description': upgraded},
+              where: 'id = ?',
+              whereArgs: [mutable['id']],
+            );
+          }
+        }
         results.add(mutable);
       }
       return results;
-    } catch (_) {
+    } catch (e) {
+      AppLogger.warn('Fallo la lectura SQLite de field_reports; usando fallback prefs.', tag: 'LocalDb', error: e);
       final prefs = await SharedPreferences.getInstance();
       final str = prefs.getString('local_field_reports');
       if (str != null && str.isNotEmpty) {
         try {
           final decoded = json.decode(str);
           if (decoded is List) return List<Map<String, dynamic>>.from(decoded);
-        } catch (_) {}
+        } catch (e2) {
+          AppLogger.warn('Cache prefs de reportes corrupto.', tag: 'LocalDb', error: e2);
+        }
       }
       return [];
     }
@@ -218,7 +247,9 @@ class LocalDbService {
       final cutoff = DateTime.now().subtract(Duration(days: maxDays)).toIso8601String();
       await db.delete('local_entries', where: 'timestamp < ?', whereArgs: [cutoff]);
       await db.delete('local_alerts', where: 'timestamp < ?', whereArgs: [cutoff]);
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('No se pudo purgar datos antiguos.', tag: 'LocalDb', error: e);
+    }
   }
 
   static Future<void> _syncSharedPreferences(List<Map<String, dynamic>> entries) async {
@@ -229,7 +260,9 @@ class LocalDbService {
       if (existingStr != null && existingStr.isNotEmpty) {
         try {
           combined = json.decode(existingStr);
-        } catch (_) {}
+        } catch (e) {
+          AppLogger.warn('Cache prefs de sitrep corrupto durante sync.', tag: 'LocalDb', error: e);
+        }
       }
       final Set<String> existingTitles = combined.map((e) => (e['title'] ?? '').toString()).toSet();
       for (final newEntry in entries) {
@@ -241,6 +274,8 @@ class LocalDbService {
       }
       if (combined.length > 200) combined = combined.sublist(0, 200);
       await prefs.setString('cached_sitrep_news', json.encode(combined));
-    } catch (_) {}
+    } catch (e) {
+      AppLogger.warn('Fallo el respaldo a SharedPreferences.', tag: 'LocalDb', error: e);
+    }
   }
 }

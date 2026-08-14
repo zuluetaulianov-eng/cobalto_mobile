@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_logger.dart';
 import '../services/cobalto_api_service.dart';
 
 class ChatMessage {
@@ -78,7 +79,9 @@ class _AiChatTabState extends State<AiChatTab> {
     if (cachedStr != null && cachedStr.isNotEmpty) {
       try {
         news = json.decode(cachedStr);
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.warn('Cache sitrep corrupto en IA local.', tag: 'AIChat', error: e);
+      }
     }
 
     if (q.contains('sitrep') || q.contains('noticia') || q.contains('hoy') || q.contains('resumir')) {

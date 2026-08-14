@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_logger.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/local_extractor_service.dart';
 import '../services/notification_service.dart';
@@ -63,7 +64,9 @@ class _AlertsTabState extends State<AlertsTab> {
     if (cachedStr != null && cachedStr.isNotEmpty) {
       try {
         news = json.decode(cachedStr);
-      } catch (_) {}
+      } catch (e) {
+        AppLogger.warn('Cache sitrep corrupto en alerts.', tag: 'Alerts', error: e);
+      }
     }
 
     if (news.isEmpty) {

@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config/api_config.dart';
-import '../services/cobalto_api_service.dart';
-import '../services/local_extractor_service.dart';
-import '../services/notification_service.dart';
-import '../services/gps_service.dart';
-import '../services/voice_service.dart';
 import '../services/crypto_vault_service.dart';
-import '../services/tactical_camera_service.dart';
-import '../services/stealth_service.dart';
 import '../services/dead_man_switch_service.dart';
+import '../services/gps_service.dart';
+import '../services/notification_service.dart';
+import '../services/settings_persistence_service.dart';
+import '../services/stealth_service.dart';
+import '../services/tactical_camera_service.dart';
+import '../services/voice_service.dart';
 import '../services/widget_service.dart';
+import '../widgets/settings_components.dart';
 
 class SettingsTab extends StatefulWidget {
   const SettingsTab({super.key});
@@ -84,16 +84,14 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   }
 
   Future<void> _loadAllSettings() async {
-    final kw = await LocalExtractorService.getLocalKeywords();
-    final src = await LocalExtractorService.getActiveSources();
-    final isOk = await CobaltoApiService.testConnection();
+    final result = await SettingsPersistenceService.loadSettings();
 
     if (mounted) {
       setState(() {
-        _keywords = List.from(kw);
-        _sources = List.from(src);
-        _isConnected = isOk;
-        _statusMessage = isOk
+        _keywords = result.keywords;
+        _sources = result.sources;
+        _isConnected = result.connected;
+        _statusMessage = result.connected == true
             ? 'Sincronizado con Estación Base PC'
             : 'Modo Autónomo Local (Dispositivo)';
       });
@@ -108,7 +106,7 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         _keywords.add(text);
         _newKeywordController.clear();
       });
-      LocalExtractorService.saveLocalKeywords(_keywords);
+      SettingsPersistenceService.saveKeywords(_keywords);
     }
   }
 
@@ -116,22 +114,22 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     setState(() {
       _keywords.remove(word);
     });
-    LocalExtractorService.saveLocalKeywords(_keywords);
+    SettingsPersistenceService.saveKeywords(_keywords);
   }
 
-  void _resetKeywordsDefault() async {
-    final defaults = ['inteligencia', 'conflicto', 'seguridad', 'ciberataque', 'defensa', 'alerta', 'defcon', 'militar', 'sanciones', 'dolar', 'venezuela'];
+  Future<void> _resetKeywordsDefault() async {
+    const defaults = ['inteligencia', 'conflicto', 'seguridad', 'ciberataque', 'defensa', 'alerta', 'defcon', 'militar', 'sanciones', 'dolar', 'venezuela'];
     setState(() => _keywords = List.from(defaults));
-    await LocalExtractorService.saveLocalKeywords(_keywords);
+    await SettingsPersistenceService.saveKeywords(_keywords);
   }
 
   // --- MÉTODOS DE FUENTES ---
-  void _addNewSource() async {
+  Future<void> _addNewSource() async {
     final name = _newSrcNameController.text.trim();
     final url = _newSrcUrlController.text.trim();
 
     if (name.isNotEmpty && url.isNotEmpty) {
-      await LocalExtractorService.addCustomSource(name, url);
+      await SettingsPersistenceService.addSource(name, url);
       _newSrcNameController.clear();
       _newSrcUrlController.clear();
       _loadAllSettings();
@@ -143,8 +141,8 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     }
   }
 
-  void _removeSource(String url) async {
-    await LocalExtractorService.removeCustomSource(url);
+  Future<void> _removeSource(String url) async {
+    await SettingsPersistenceService.removeSource(url);
     _loadAllSettings();
   }
 
@@ -152,48 +150,33 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   Future<void> _saveAllSettings() async {
     setState(() => _isSaving = true);
 
-    await ApiConfig.saveConfig(
-      _urlController.text.trim(),
-      _userController.text.trim(),
-      _passController.text.trim(),
+    final isOk = await SettingsPersistenceService.saveAll(
+      url: _urlController.text.trim(),
+      user: _userController.text.trim(),
+      pass: _passController.text.trim(),
+      ollamaHost: _ollamaHostController.text.trim(),
+      ollamaModel: _selectedOllamaModel,
+      keywords: _keywords,
+      maxAgeHours: int.tryParse(_maxAgeHoursController.text) ?? 48,
+      defconLevel: int.tryParse(_defconController.text) ?? 5,
     );
 
-    await ApiConfig.saveOllamaConfig(
-      _ollamaHostController.text.trim(),
-      _selectedOllamaModel,
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isOk ? '✅ Ajustes sincronizados con la Base PC' : '📱 Ajustes guardados en el Teléfono'),
+        backgroundColor: const Color(0xFF00FFAA),
+      ),
     );
-
-    await LocalExtractorService.saveLocalKeywords(_keywords);
-
-    final isOk = await CobaltoApiService.testConnection();
-    if (isOk) {
-      Map<String, dynamic> payload = {
-        'KEYWORDS': _keywords,
-        'ENTRY_MAX_AGE_HOURS': int.tryParse(_maxAgeHoursController.text) ?? 48,
-        'DEFCON_LEVEL': int.tryParse(_defconController.text) ?? 5,
-      };
-      await CobaltoApiService.saveSystemConfig(payload);
-    }
-
-    if (mounted) {
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(isOk ? '✅ Ajustes sincronizados con la Base PC' : '📱 Ajustes guardados en el Teléfono'),
-          backgroundColor: const Color(0xFF00FFAA),
-        ),
-      );
-    }
   }
 
   Future<void> _clearCache() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('cached_sitrep_news');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('🧹 Caché SitRep vaciado correctamente'), backgroundColor: Color(0xFF00E5FF)),
-      );
-    }
+    await SettingsPersistenceService.clearSitrepCache();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🧹 Caché SitRep vaciado correctamente'), backgroundColor: Color(0xFF00E5FF)),
+    );
   }
 
   @override
@@ -293,31 +276,31 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _sectionTitle('📡 MODO OPERATIVO DE ENLACE'),
+        const SettingsSectionTitle('📡 MODO OPERATIVO DE ENLACE'),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-              child: _modeTile(
-                '📱 MODO AUTÓNOMO',
-                'Operar solo en el teléfono sin servidor.',
-                _useAutonomousMode,
-                () => setState(() => _useAutonomousMode = true),
+              child: SettingsModeTile(
+                title: '📱 MODO AUTÓNOMO',
+                description: 'Operar solo en el teléfono sin servidor.',
+                isSelected: _useAutonomousMode,
+                onTap: () => setState(() => _useAutonomousMode = true),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _modeTile(
-                '📡 ENLACE PC',
-                'Conectar con la PC Estación Base.',
-                !_useAutonomousMode,
-                () => setState(() => _useAutonomousMode = false),
+              child: SettingsModeTile(
+                title: '📡 ENLACE PC',
+                description: 'Conectar con la PC Estación Base.',
+                isSelected: !_useAutonomousMode,
+                onTap: () => setState(() => _useAutonomousMode = false),
               ),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        _sectionTitle('⏱️ FRECUENCIA DE EXTRACCIÓN AUTOMÁTICA'),
+        const SettingsSectionTitle('⏱️ FRECUENCIA DE EXTRACCIÓN AUTOMÁTICA'),
         const SizedBox(height: 6),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -346,15 +329,15 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         ),
         if (!_useAutonomousMode) ...[
           const SizedBox(height: 14),
-          _sectionTitle('💻 DIRECCIÓN Y CREDENCIALES DE BASE (PC)'),
+          const SettingsSectionTitle('💻 DIRECCIÓN Y CREDENCIALES DE BASE (PC)'),
           const SizedBox(height: 6),
-          _textField(_urlController, 'Dirección IP o Servidor Central', Icons.link),
+          SettingsTextField(_urlController, label: 'Dirección IP o Servidor Central', icon: Icons.link),
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(child: _textField(_userController, 'Usuario', Icons.person)),
+              Expanded(child: SettingsTextField(_userController, label: 'Usuario', icon: Icons.person)),
               const SizedBox(width: 8),
-              Expanded(child: _textField(_passController, 'Contraseña', Icons.lock, obscureText: true)),
+              Expanded(child: SettingsTextField(_passController, label: 'Contraseña', icon: Icons.lock, obscureText: true)),
             ],
           ),
         ],
@@ -367,7 +350,7 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _sectionTitle('🔍 PALABRAS CLAVE DE INTELIGENCIA (CHIPS TÁCTICOS)'),
+        const SettingsSectionTitle('🔍 PALABRAS CLAVE DE INTELIGENCIA (CHIPS TÁCTICOS)'),
         const SizedBox(height: 6),
         const Text(
           'Las noticias y alertas serán evaluadas en vivo contra estas palabras clave.',
@@ -454,7 +437,7 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _sectionTitle('📰 FUENTES DE INGESTA (RSS & TELEGRAM PÚBLICO)'),
+        const SettingsSectionTitle('📰 FUENTES DE INGESTA (RSS & TELEGRAM PÚBLICO)'),
         const SizedBox(height: 6),
         const Text(
           'Puedes agregar tus propios canales de Telegram (t.me/s/canal) o feeds RSS.',
@@ -472,9 +455,9 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
           ),
           child: Column(
             children: [
-              _textField(_newSrcNameController, 'Nombre de la Fuente (Ej. Canal X)', Icons.label),
+              SettingsTextField(_newSrcNameController, label: 'Nombre de la Fuente (Ej. Canal X)', icon: Icons.label),
               const SizedBox(height: 6),
-              _textField(_newSrcUrlController, 'URL (RSS xml o t.me/s/nombre_canal)', Icons.link),
+              SettingsTextField(_newSrcUrlController, label: 'URL (RSS xml o t.me/s/nombre_canal)', icon: Icons.link),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
@@ -494,7 +477,7 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         ),
         const SizedBox(height: 12),
 
-        _sectionTitle('LISTA DE FUENTES ACTIVAS (${_sources.length}):'),
+        SettingsSectionTitle('LISTA DE FUENTES ACTIVAS (${_sources.length}):'),
         const SizedBox(height: 6),
 
         ..._sources.map((src) {
@@ -527,7 +510,7 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _sectionTitle('🤖 CONFIGURACIÓN DE OLLAMA & IA LOCAL'),
+        const SettingsSectionTitle('🤖 CONFIGURACIÓN DE OLLAMA & IA LOCAL'),
         const SizedBox(height: 6),
         const Text(
           'Configura la dirección del servidor Ollama para inferencia local RAG.',
@@ -535,10 +518,10 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         ),
         const SizedBox(height: 10),
 
-        _textField(_ollamaHostController, 'Host Ollama (Ej. http://192.168.1.50:11434)', Icons.dns),
+        SettingsTextField(_ollamaHostController, label: 'Host Ollama (Ej. http://192.168.1.50:11434)', icon: Icons.dns),
         const SizedBox(height: 12),
 
-        _sectionTitle('MODELO OLLAMA SELECCIONADO:'),
+        const SettingsSectionTitle('MODELO OLLAMA SELECCIONADO:'),
         const SizedBox(height: 6),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -573,339 +556,245 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        _sectionTitle('⚙️ PARÁMETROS DE RELEVANCIA Y DEFCON'),
+        const SettingsSectionTitle('⚙️ PARÁMETROS DE RELEVANCIA Y DEFCON'),
         const SizedBox(height: 8),
 
-        _textField(_defconController, 'Nivel DEFCON Inicial (1 al 5)', Icons.shield),
+        SettingsTextField(_defconController, label: 'Nivel DEFCON Inicial (1 al 5)', icon: Icons.shield),
         const SizedBox(height: 10),
 
-        _textField(_maxAgeHoursController, 'Antigüedad Máxima de Noticias (Horas)', Icons.hourglass_bottom),
+        SettingsTextField(_maxAgeHoursController, label: 'Antigüedad Máxima de Noticias (Horas)', icon: Icons.hourglass_bottom),
         const SizedBox(height: 16),
 
-        _sectionTitle('🔔 PRUEBA DE NOTIFICACIONES Y BURBUJA FLOTANTE'),
+        const SettingsSectionTitle('🔔 PRUEBA DE NOTIFICACIONES Y BURBUJA FLOTANTE'),
         const SizedBox(height: 6),
-        ElevatedButton.icon(
-          onPressed: () async {
-            await NotificationService.showAlertNotification(
-              title: 'CIBERATAQUE DETECTADO (PRUEBA)',
-              body: 'Notificación de alerta táctica recibida con éxito en la barra de estado de Android.',
-              level: 'CRÍTICA',
-              showFloatingOverlay: false,
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('🔔 Notificación enviada a la barra de estado.'),
-                  backgroundColor: Color(0xFF00E5FF),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.notifications_active, size: 18),
-          label: const Text('ENVIAR NOTIFICACIÓN A BARRA DE ESTADO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF00E5FF).withOpacity(0.2),
-            foregroundColor: const Color(0xFF00E5FF),
-            side: const BorderSide(color: Color(0xFF00E5FF)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.notifications_active,
+          label: 'ENVIAR NOTIFICACIÓN A BARRA DE ESTADO',
+          color: const Color(0xFF00E5FF),
+          onPressed: _testNotification,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () async {
-            await NotificationService.showFloatingBubble(
-              title: 'INCIDENTE CRÍTICO OSINT',
-              body: 'Superposición táctica activada sobre el sistema Android. Toca CERRAR HUD para ocultar.',
-              level: 'DEFCON 2',
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('🫧 Ventana / HUD flotante activada sobre pantalla.'),
-                  backgroundColor: Color(0xFF00FFAA),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.bubble_chart, size: 18),
-          label: const Text('DESPLEGAR BURBUJA / HUD FLOTANTE (OVERLAY)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF00FFAA).withOpacity(0.2),
-            foregroundColor: const Color(0xFF00FFAA),
-            side: const BorderSide(color: Color(0xFF00FFAA)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.bubble_chart,
+          label: 'DESPLEGAR BURBUJA / HUD FLOTANTE (OVERLAY)',
+          color: const Color(0xFF00FFAA),
+          onPressed: _testFloatingBubble,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () async {
-            final pos = await GpsService.getCurrentPosition();
-            if (pos != null) {
-              await GpsService.evaluateGeofenceAlert(
-                eventLat: pos.latitude + 0.01,
-                eventLon: pos.longitude + 0.01,
-                title: 'INCIDENTE DE PROXIMIDAD (PRUEBA)',
-                level: 'CRÍTICA',
-                radiusKm: 15.0,
-              );
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('🛰️ GPS Activo: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}. Geocerca verificada.'),
-                    backgroundColor: const Color(0xFF00FFAA),
-                  ),
-                );
-              }
-            } else {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('⚠️ No se pudo obtener la posición GPS. Revisa permisos.'),
-                    backgroundColor: Color(0xFFFF2D55),
-                  ),
-                );
-              }
-            }
-          },
-          icon: const Icon(Icons.my_location, size: 18),
-          label: const Text('PROBAR GEOCERCA Y SENSORES GPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF9500).withOpacity(0.2),
-            foregroundColor: const Color(0xFFFF9500),
-            side: const BorderSide(color: Color(0xFFFF9500)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.my_location,
+          label: 'PROBAR GEOCERCA Y SENSORES GPS',
+          color: const Color(0xFFFF9500),
+          onPressed: _testGeofence,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () async {
-            await VoiceService.speakAlert(
-              title: 'PRUEBA DE SINTETIZADOR DE VOZ',
-              body: 'El canal auditivo militar de COBALTO se encuentra completamente activo y listo para operarse con manos libres.',
-              level: 'DEFCON 1',
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('🔊 Reproduciendo lectura por voz sintética militar.'),
-                  backgroundColor: Color(0xFF00E5FF),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.record_voice_over, size: 18),
-          label: const Text('PROBAR SINTETIZADOR Y LECTURA DE VOZ (TTS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFBF5AF2).withOpacity(0.2),
-            foregroundColor: const Color(0xFFBF5AF2),
-            side: const BorderSide(color: Color(0xFFBF5AF2)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.record_voice_over,
+          label: 'PROBAR SINTETIZADOR Y LECTURA DE VOZ (TTS)',
+          color: const Color(0xFFBF5AF2),
+          onPressed: _testVoice,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () async {
-            final vaultStatus = await CryptoVaultService.checkVaultStatus();
-            if (mounted) {
-              final isSecure = vaultStatus['secure'] == true;
-              final algo = vaultStatus['key_algorithm'] ?? 'AES-256';
-              final bits = vaultStatus['key_bits'] ?? 256;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    isSecure
-                        ? '🔒 Bóveda de Datos Cifrada Activa [$algo / $bits-bits]. Clave protegida en Android KeyStore.'
-                        : '⚠️ Bóveda local operando en modo fallback.',
-                  ),
-                  backgroundColor: isSecure ? const Color(0xFF00FFAA) : const Color(0xFFFF9500),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.security, size: 18),
-          label: const Text('VERIFICAR BÓVEDA CIFRADA (AES-256 / KEYSTORE)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF30D158).withOpacity(0.2),
-            foregroundColor: const Color(0xFF30D158),
-            side: const BorderSide(color: Color(0xFF30D158)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.security,
+          label: 'VERIFICAR BÓVEDA CIFRADA (AES-256 / KEYSTORE)',
+          color: const Color(0xFF30D158),
+          onPressed: _testVault,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () async {
-            final pos = await GpsService.getCurrentPosition();
-            final lat = pos?.latitude ?? 10.4806;
-            final lon = pos?.longitude ?? -66.9036;
-
-            final photo = await TacticalCameraService.captureTelemetryPhoto(
-              lat: lat,
-              lon: lon,
-              classification: 'CONFIDENCIAL // OPERADOR C4I',
-            );
-
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    photo != null
-                        ? '📷 Fotografía estampada con telemetría GPS [$lat, $lon].'
-                        : '⚠️ No se pudo inicializar la cámara o permiso denegado.',
-                  ),
-                  backgroundColor: photo != null ? const Color(0xFF00E5FF) : const Color(0xFFFF2D55),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.camera_alt, size: 18),
-          label: const Text('PROBAR CÁMARA TÁCTICA Y TELEMETRÍA GPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF64D2FF).withOpacity(0.2),
-            foregroundColor: const Color(0xFF64D2FF),
-            side: const BorderSide(color: Color(0xFF64D2FF)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.camera_alt,
+          label: 'PROBAR CÁMARA TÁCTICA Y TELEMETRÍA GPS',
+          color: const Color(0xFF64D2FF),
+          onPressed: _testTacticalCamera,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () async {
-            await WidgetService.syncWidgetFromLocalDb();
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('📱 Widget Nativo de Android actualizado con inteligencia SitRep local.'),
-                  backgroundColor: Color(0xFF00FFAA),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.widgets, size: 18),
-          label: const Text('PROBAR ACTUALIZACIÓN DE WIDGET DE PANTALLA DE INICIO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF5E5CE6).withOpacity(0.2),
-            foregroundColor: const Color(0xFF5E5CE6),
-            side: const BorderSide(color: Color(0xFF5E5CE6)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.widgets,
+          label: 'PROBAR ACTUALIZACIÓN DE WIDGET DE PANTALLA DE INICIO',
+          color: const Color(0xFF5E5CE6),
+          onPressed: _testWidgetSync,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () {
-            StealthService().toggleStealth();
-            final isActive = StealthService().isStealthActive;
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(isActive ? '🥷 MODO SIGILO Y VISIÓN NOCTURNA (NVG) ACTIVADO.' : '☀️ MODO C4I ESTÁNDAR RESTAURADO.'),
-                  backgroundColor: isActive ? const Color(0xFFFF1E1E) : const Color(0xFF00E5FF),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.visibility_off, size: 18),
-          label: const Text('CONMUTAR MODO SIGILO / VISIÓN NOCTURNA (NVG)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF3B30).withOpacity(0.2),
-            foregroundColor: const Color(0xFFFF3B30),
-            side: const BorderSide(color: Color(0xFFFF3B30)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.visibility_off,
+          label: 'CONMUTAR MODO SIGILO / VISIÓN NOCTURNA (NVG)',
+          color: const Color(0xFFFF3B30),
+          onPressed: _toggleStealth,
         ),
         const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: () {
-            final service = DeadManSwitchService();
-            if (service.isActive) {
-              service.stopMonitoring();
-            } else {
-              service.startMonitoring();
-            }
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(service.isActive ? '🚨 MONITOR HOMBRE MUERTO ACTIVADO (Detección de Caídas).' : '⏸️ Monitor de hombre muerto pausado.'),
-                  backgroundColor: service.isActive ? const Color(0xFFFF9500) : const Color(0xFF8E8E93),
-                ),
-              );
-            }
-          },
-          icon: const Icon(Icons.warning_amber_rounded, size: 18),
-          label: const Text('PROBAR MONITOR HOMBRE MUERTO / INMOVILIDAD (SOS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF9500).withOpacity(0.2),
-            foregroundColor: const Color(0xFFFF9500),
-            side: const BorderSide(color: Color(0xFFFF9500)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
+        TacticalActionButton(
+          icon: Icons.warning_amber_rounded,
+          label: 'PROBAR MONITOR HOMBRE MUERTO / INMOVILIDAD (SOS)',
+          color: const Color(0xFFFF9500),
+          onPressed: _toggleDeadManSwitch,
         ),
         const SizedBox(height: 16),
 
-        _sectionTitle('🧹 LIMPIEZA DE MEMORIA LOCAL'),
+        const SettingsSectionTitle('🧹 LIMPIEZA DE MEMORIA LOCAL'),
         const SizedBox(height: 6),
-        ElevatedButton.icon(
+        TacticalActionButton(
+          icon: Icons.delete_sweep,
+          label: 'VACIAR CACHÉ SITREP DEL TELÉFONO',
+          color: const Color(0xFFFF2D55),
           onPressed: _clearCache,
-          icon: const Icon(Icons.delete_sweep, size: 18),
-          label: const Text('VACIAR CACHÉ SITREP DEL TELÉFONO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFF2D55).withOpacity(0.2),
-            foregroundColor: const Color(0xFFFF2D55),
-            side: const BorderSide(color: Color(0xFFFF2D55)),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-          ),
         ),
       ],
     );
   }
 
-  // --- COMPONENTES VISUALES ---
-  Widget _sectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        color: Color(0xFF00E5FF),
-        fontSize: 11,
-        fontWeight: FontWeight.bold,
-        fontFamily: 'monospace',
-        letterSpacing: 0.5,
+  // --- ACCIONES DE PRUEBA TÁCTICA (PARÁMETROS) ---
+  Future<void> _testNotification() async {
+    await NotificationService.showAlertNotification(
+      title: 'CIBERATAQUE DETECTADO (PRUEBA)',
+      body: 'Notificación de alerta táctica recibida con éxito en la barra de estado de Android.',
+      level: 'CRÍTICA',
+      showFloatingOverlay: false,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🔔 Notificación enviada a la barra de estado.'),
+        backgroundColor: Color(0xFF00E5FF),
       ),
     );
   }
 
-  Widget _modeTile(String title, String desc, bool isSelected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF00E5FF).withOpacity(0.15) : const Color(0xFF141824),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: isSelected ? const Color(0xFF00E5FF) : Colors.white10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: TextStyle(color: isSelected ? const Color(0xFF00E5FF) : Colors.white, fontWeight: FontWeight.bold, fontSize: 11, fontFamily: 'monospace')),
-            const SizedBox(height: 3),
-            Text(desc, style: const TextStyle(color: Colors.white54, fontSize: 10)),
-          ],
-        ),
+  Future<void> _testFloatingBubble() async {
+    await NotificationService.showFloatingBubble(
+      title: 'INCIDENTE CRÍTICO OSINT',
+      body: 'Superposición táctica activada sobre el sistema Android. Toca CERRAR HUD para ocultar.',
+      level: 'DEFCON 2',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🫧 Ventana / HUD flotante activada sobre pantalla.'),
+        backgroundColor: Color(0xFF00FFAA),
       ),
     );
   }
 
-  Widget _textField(TextEditingController controller, String label, IconData icon, {bool obscureText = false}) {
-    return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace'),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white54, fontSize: 11),
-        prefixIcon: Icon(icon, color: const Color(0xFF00E5FF), size: 16),
-        filled: true,
-        fillColor: const Color(0xFF141824),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+  Future<void> _testGeofence() async {
+    final pos = await GpsService.getCurrentPosition();
+    if (pos != null) {
+      await GpsService.evaluateGeofenceAlert(
+        eventLat: pos.latitude + 0.01,
+        eventLon: pos.longitude + 0.01,
+        title: 'INCIDENTE DE PROXIMIDAD (PRUEBA)',
+        level: 'CRÍTICA',
+        radiusKm: 15.0,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🛰️ GPS Activo: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}. Geocerca verificada.'),
+          backgroundColor: const Color(0xFF00FFAA),
+        ),
+      );
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ No se pudo obtener la posición GPS. Revisa permisos.'),
+          backgroundColor: Color(0xFFFF2D55),
+        ),
+      );
+    }
+  }
+
+  Future<void> _testVoice() async {
+    await VoiceService.speakAlert(
+      title: 'PRUEBA DE SINTETIZADOR DE VOZ',
+      body: 'El canal auditivo militar de COBALTO se encuentra completamente activo y listo para operarse con manos libres.',
+      level: 'DEFCON 1',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🔊 Reproduciendo lectura por voz sintética militar.'),
+        backgroundColor: Color(0xFF00E5FF),
+      ),
+    );
+  }
+
+  Future<void> _testVault() async {
+    final vaultStatus = await CryptoVaultService.checkVaultStatus();
+    if (!mounted) return;
+    final isSecure = vaultStatus['secure'] == true;
+    final algo = vaultStatus['key_algorithm'] ?? 'AES-256';
+    final bits = vaultStatus['key_bits'] ?? 256;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isSecure
+              ? '🔒 Bóveda de Datos Cifrada Activa [$algo / $bits-bits]. Clave protegida en Android KeyStore.'
+              : '⚠️ Bóveda local operando en modo fallback.',
+        ),
+        backgroundColor: isSecure ? const Color(0xFF00FFAA) : const Color(0xFFFF9500),
+      ),
+    );
+  }
+
+  Future<void> _testTacticalCamera() async {
+    final pos = await GpsService.getCurrentPosition();
+    final lat = pos?.latitude ?? 10.4806;
+    final lon = pos?.longitude ?? -66.9036;
+
+    final photo = await TacticalCameraService.captureTelemetryPhoto(
+      lat: lat,
+      lon: lon,
+      classification: 'CONFIDENCIAL // OPERADOR C4I',
+    );
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          photo != null
+              ? '📷 Fotografía estampada con telemetría GPS [$lat, $lon].'
+              : '⚠️ No se pudo inicializar la cámara o permiso denegado.',
+        ),
+        backgroundColor: photo != null ? const Color(0xFF00E5FF) : const Color(0xFFFF2D55),
+      ),
+    );
+  }
+
+  Future<void> _testWidgetSync() async {
+    await WidgetService.syncWidgetFromLocalDb();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('📱 Widget Nativo de Android actualizado con inteligencia SitRep local.'),
+        backgroundColor: Color(0xFF00FFAA),
+      ),
+    );
+  }
+
+  void _toggleStealth() {
+    StealthService().toggleStealth();
+    final isActive = StealthService().isStealthActive;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isActive ? '🥷 MODO SIGILO Y VISIÓN NOCTURNA (NVG) ACTIVADO.' : '☀️ MODO C4I ESTÁNDAR RESTAURADO.'),
+        backgroundColor: isActive ? const Color(0xFFFF1E1E) : const Color(0xFF00E5FF),
+      ),
+    );
+  }
+
+  void _toggleDeadManSwitch() {
+    final service = DeadManSwitchService();
+    if (service.isActive) {
+      service.stopMonitoring();
+    } else {
+      service.startMonitoring();
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(service.isActive ? '🚨 MONITOR HOMBRE MUERTO ACTIVADO (Detección de Caídas).' : '⏸️ Monitor de hombre muerto pausado.'),
+        backgroundColor: service.isActive ? const Color(0xFFFF9500) : const Color(0xFF8E8E93),
       ),
     );
   }

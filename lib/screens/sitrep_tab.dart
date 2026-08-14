@@ -1,13 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../services/cobalto_api_service.dart';
 import '../services/local_extractor_service.dart';
-import '../services/local_db_service.dart';
-import '../widgets/intel_card_generator_dialog.dart';
+import '../services/sitrep_feed_service.dart';
+import '../widgets/intel_details_sheet.dart';
+import '../widgets/intel_share_sheet.dart';
+import '../widgets/sitrep_news_card.dart';
 
 class SitrepTab extends StatefulWidget {
   const SitrepTab({super.key});
@@ -41,66 +42,24 @@ class _SitrepTabState extends State<SitrepTab> {
   }
 
   Future<void> _loadCacheAndFetch() async {
-    // 1. Cargar almacenamiento SQLite local (cobalto_edge.db)
-    final localDbNews = await LocalDbService.getEntries();
-    if (localDbNews.isNotEmpty) {
+    // 1. Cargar almacenamiento SQLite local (cobalto_edge.db) al instante
+    final cachedNews = await SitrepFeedService.loadCachedLocalEntries();
+    if (cachedNews.isNotEmpty) {
       setState(() {
-        _news = localDbNews;
+        _news = cachedNews;
         _applyFilter();
         _isLoading = false;
       });
     }
 
-    // 2. Intentar obtener datos frescos del servidor o extracción directa
+    // 2. Obtener datos frescos del servidor / extracción directa
     await _loadData();
   }
 
   Future<void> _loadData() async {
     if (_news.isEmpty) setState(() => _isLoading = true);
 
-    // 1. Obtener noticias locales guardadas en SQLite
-    final localEntries = await LocalDbService.getEntries();
-
-    // 2. Intentar consultar noticias frescas del servidor
-    final remoteNews = await CobaltoApiService.fetchNews();
-
-    final List<Map<String, dynamic>> combined = [];
-    final Set<String> seenTitles = {};
-
-    // Agregar noticias del servidor primero (si existen)
-    if (remoteNews.isNotEmpty) {
-      final List<Map<String, dynamic>> castedRemote = List<Map<String, dynamic>>.from(remoteNews);
-      for (final item in castedRemote) {
-        final title = item['title']?.toString() ?? '';
-        if (title.isNotEmpty && !seenTitles.contains(title)) {
-          seenTitles.add(title);
-          combined.add(item);
-        }
-      }
-      // Guardar noticias remotas en la BD local SQLite para modo offline
-      await LocalDbService.insertEntries(castedRemote);
-    }
-
-    // Agregar noticias locales de SQLite que no estén duplicadas
-    for (final item in localEntries) {
-      final title = item['title']?.toString() ?? '';
-      if (title.isNotEmpty && !seenTitles.contains(title)) {
-        seenTitles.add(title);
-        combined.add(item);
-      }
-    }
-
-    // Si todo sigue vacío, intentar extracción directa local en el teléfono
-    if (combined.isEmpty) {
-      final localExtracted = await LocalExtractorService.extractDirectlyOnDevice();
-      for (final item in localExtracted) {
-        final title = item['title']?.toString() ?? '';
-        if (title.isNotEmpty && !seenTitles.contains(title)) {
-          seenTitles.add(title);
-          combined.add(item);
-        }
-      }
-    }
+    final combined = await SitrepFeedService.loadCombinedFeed();
 
     if (mounted) {
       setState(() {
@@ -108,10 +67,6 @@ class _SitrepTabState extends State<SitrepTab> {
         _applyFilter();
         _isLoading = false;
       });
-
-      // Respaldar caché en SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('cached_sitrep_news', json.encode(combined));
     }
   }
 
@@ -128,7 +83,7 @@ class _SitrepTabState extends State<SitrepTab> {
     // 1. Intentar servidor si está activo
     await CobaltoApiService.triggerExtraction();
 
-    // 2. Ejecutar Extracción Directa Autónoma en el Teléfono (100% independiente)
+    // 2. Ejecutar Extracción Directa Autónoma en el Teléfono (independiente)
     final localNews = await LocalExtractorService.extractDirectlyOnDevice();
 
     if (!mounted) return;
@@ -149,17 +104,7 @@ class _SitrepTabState extends State<SitrepTab> {
   }
 
   void _applyFilter() {
-    if (_searchQuery.isEmpty) {
-      _filteredNews = List.from(_news);
-    } else {
-      final q = _searchQuery.toLowerCase();
-      _filteredNews = _news.where((item) {
-        final title = (item['title'] ?? '').toString().toLowerCase();
-        final summary = (item['summary'] ?? '').toString().toLowerCase();
-        final source = (item['source'] ?? '').toString().toLowerCase();
-        return title.contains(q) || summary.contains(q) || source.contains(q);
-      }).toList();
-    }
+    _filteredNews = SitrepFeedService.filterNews(_news, _searchQuery);
   }
 
   Future<void> _openLink(String? urlStr) async {
@@ -185,265 +130,16 @@ class _SitrepTabState extends State<SitrepTab> {
     }
   }
 
-  void _copyToClipboard(String title, String? link) {
-    final textToCopy = link != null && link.isNotEmpty ? '$title\nFuente: $link' : title;
-    Clipboard.setData(ClipboardData(text: textToCopy));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('📋 Reporte OSINT copiado al portapapeles.'),
-        backgroundColor: Color(0xFF00E5FF),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
   void _shareNewsModal(BuildContext context, Map<String, dynamic> item) {
-    final title = item['title'] ?? 'Reporte COBALTO OSINT';
-    final link = item['link']?.toString() ?? '';
-    final source = item['source'] ?? 'Intel Hub';
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF141824),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: const [
-                  Icon(Icons.share, color: Color(0xFF00E5FF), size: 22),
-                  SizedBox(width: 10),
-                  Text(
-                    'DIFUNDIR REPORTE OSINT',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                      fontFamily: 'monospace',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00E5FF).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.4)),
-                ),
-                child: ListTile(
-                  leading: const Icon(Icons.image_outlined, color: Color(0xFF00E5FF), size: 28),
-                  title: const Text(
-                    'GENERAR FICHA GRÁFICA HD (PNG)',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'monospace'),
-                  ),
-                  subtitle: const Text('Exporta infografía personalizada con QR y notas', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    IntelCardGeneratorDialog.show(context, item);
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              ListTile(
-                leading: const Icon(Icons.copy, color: Color(0xFF00E5FF)),
-                title: const Text('Copiar Texto y Enlace', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _copyToClipboard(title, link);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.send, color: Color(0xFF00FFAA)),
-                title: const Text('Compartir por Telegram', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  final tgUrl = 'https://t.me/share/url?url=${Uri.encodeComponent(link)}&text=${Uri.encodeComponent('[$source] $title')}';
-                  _openLink(tgUrl);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.chat_bubble_outline, color: Color(0xFF25D366)),
-                title: const Text('Compartir por WhatsApp', style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context);
-                  final waUrl = 'https://wa.me/?text=${Uri.encodeComponent('[$source] $title\n$link')}';
-                  _openLink(waUrl);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    IntelShareSheet.show(context, item: item, onOpenLink: (url) => _openLink(url));
   }
 
   void _showDetailsModal(BuildContext context, Map<String, dynamic> item) {
-    final title = item['title'] ?? 'Sin título';
-    final source = item['source'] ?? 'Intel Hub';
-    final summary = item['summary'] ?? item['text'] ?? 'Sin contenido detallado registrado.';
-    final published = item['published'] ?? item['timestamp'] ?? '';
-    final link = item['link'];
-    final imageUrl = item['image'] ?? item['img'] ?? item['media_url'];
-    final matchedKw = item['keywords_matched'] is List ? List<String>.from(item['keywords_matched']) : [];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0A0B10),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.75,
-          maxChildSize: 0.95,
-          minChildSize: 0.4,
-          builder: (context, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.white30,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  if (imageUrl != null && imageUrl.toString().startsWith('http')) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        imageUrl.toString(),
-                        height: 180,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00E5FF).withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF00E5FF)),
-                        ),
-                        child: Text(
-                          source.toString().toUpperCase(),
-                          style: const TextStyle(
-                            color: Color(0xFF00E5FF),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                      ),
-                      Text(
-                        published,
-                        style: const TextStyle(color: Colors.white54, fontSize: 11),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      height: 1.3,
-                    ),
-                  ),
-                  if (matchedKw.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: matchedKw.map((kw) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: Colors.amber.withOpacity(0.4)),
-                          ),
-                          child: Text(
-                            '#$kw',
-                            style: const TextStyle(color: Colors.amber, fontSize: 10, fontFamily: 'monospace'),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                  const Divider(color: Colors.white10, height: 28),
-                  Text(
-                    summary,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.87),
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00E5FF),
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          icon: const Icon(Icons.open_in_new, size: 18),
-                          label: const Text('ABRIR FUENTE WEB', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          onPressed: () => _openLink(link),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      IconButton.filledTonal(
-                        style: IconButton.styleFrom(
-                          backgroundColor: const Color(0xFF141824),
-                          foregroundColor: const Color(0xFF00E5FF),
-                          side: const BorderSide(color: Color(0xFF00E5FF), width: 0.5),
-                        ),
-                        icon: const Icon(Icons.share),
-                        onPressed: () => _shareNewsModal(context, item),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+    IntelDetailsSheet.show(
+      context,
+      item: item,
+      onOpenLink: _openLink,
+      onShare: _shareNewsModal,
     );
   }
 
@@ -573,144 +269,14 @@ class _SitrepTabState extends State<SitrepTab> {
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         itemCount: _filteredNews.length,
                         itemBuilder: (context, index) {
-                          final item = _filteredNews[index];
-                          final title = item['title'] ?? 'Sin título';
-                          final source = item['source'] ?? 'Intel Hub';
-                          final summary = item['summary'] ?? item['text'] ?? '';
-                          final published = item['published'] ?? item['timestamp'] ?? '';
+                          final item = Map<String, dynamic>.from(_filteredNews[index]);
                           final link = item['link'];
-                          final imageUrl = item['image'] ?? item['img'] ?? item['media_url'];
 
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            color: const Color(0xFF141824),
-                            clipBehavior: Clip.antiAlias,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              side: const BorderSide(color: Colors.white10),
-                            ),
-                            child: InkWell(
-                              onTap: () => _showDetailsModal(context, Map<String, dynamic>.from(item)),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (imageUrl != null && imageUrl.toString().startsWith('http'))
-                                    Container(
-                                      height: 140,
-                                      width: double.infinity,
-                                      color: Colors.black26,
-                                      child: Image.network(
-                                        imageUrl.toString(),
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-                                      ),
-                                    ),
-                                  Padding(
-                                    padding: const EdgeInsets.all(12.0),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF00E5FF).withOpacity(0.15),
-                                                borderRadius: BorderRadius.circular(4),
-                                                border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
-                                              ),
-                                              child: Text(
-                                                source.toString().toUpperCase(),
-                                                style: const TextStyle(
-                                                  color: Color(0xFF00E5FF),
-                                                  fontSize: 9,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontFamily: 'monospace',
-                                                ),
-                                              ),
-                                            ),
-                                            Text(
-                                              published,
-                                              style: const TextStyle(
-                                                color: Colors.white38,
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          title,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        if (summary.isNotEmpty) ...[
-                                          const SizedBox(height: 6),
-                                          Text(
-                                            summary,
-                                            maxLines: 3,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 12,
-                                              height: 1.4,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                  const Divider(height: 1, color: Colors.white10),
-                                  // Barra Táctica de Acciones en el Pie de la Tarjeta
-                                  Container(
-                                    color: const Color(0xFF0F121C),
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        TextButton.icon(
-                                          style: TextButton.styleFrom(
-                                            foregroundColor: const Color(0xFF00E5FF),
-                                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                                          ),
-                                          icon: const Icon(Icons.article_outlined, size: 16),
-                                          label: const Text(
-                                            'LEER',
-                                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                                          ),
-                                          onPressed: () => _showDetailsModal(context, Map<String, dynamic>.from(item)),
-                                        ),
-                                        Row(
-                                          children: [
-                                            TextButton.icon(
-                                              style: TextButton.styleFrom(
-                                                foregroundColor: Colors.white70,
-                                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                              ),
-                                              icon: const Icon(Icons.open_in_new, size: 15),
-                                              label: const Text(
-                                                'ABRIR WEB',
-                                                style: TextStyle(fontSize: 10, fontFamily: 'monospace'),
-                                              ),
-                                              onPressed: () => _openLink(link),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.share_outlined, size: 18, color: Color(0xFF00FFAA)),
-                                              tooltip: 'Difundir Noticia',
-                                              onPressed: () => _shareNewsModal(context, Map<String, dynamic>.from(item)),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          return SitrepNewsCard(
+                            item: item,
+                            onRead: () => _showDetailsModal(context, item),
+                            onOpenWeb: () => _openLink(link),
+                            onShare: () => _shareNewsModal(context, item),
                           );
                         },
                       ),

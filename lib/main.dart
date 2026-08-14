@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'config/api_config.dart';
 import 'screens/boot_screen.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ApiConfig.loadConfig();
+  await NotificationService.init();
   runApp(const CobaltoApp());
 }
 

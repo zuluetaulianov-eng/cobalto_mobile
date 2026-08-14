@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/local_extractor_service.dart';
+import '../services/notification_service.dart';
+import '../services/voice_service.dart';
 
 class AlertsTab extends StatefulWidget {
   const AlertsTab({super.key});
@@ -35,6 +37,20 @@ class _AlertsTabState extends State<AlertsTab> {
         _alerts = data;
         _isLoading = false;
       });
+
+      // Si hay alertas críticas encontradas, notificar a la barra de estado de Android
+      if (data.isNotEmpty) {
+        final topAlert = data.first;
+        final title = topAlert['title'] ?? topAlert['name'] ?? 'Alerta de Seguridad Táctica';
+        final summary = topAlert['summary'] ?? topAlert['description'] ?? 'Incidente detectado por COBALTO';
+        final level = (topAlert['level'] ?? topAlert['severity'] ?? 'ALTA').toString();
+
+        await NotificationService.showAlertNotification(
+          title: title.toString(),
+          body: summary.toString(),
+          level: level,
+        );
+      }
     }
   }
 
@@ -180,9 +196,27 @@ class _AlertsTabState extends State<AlertsTab> {
                                     ),
                                   ),
                                 ),
-                                Text(
-                                  time,
-                                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(4),
+                                      icon: const Icon(Icons.volume_up, color: Color(0xFF00E5FF), size: 18),
+                                      onPressed: () {
+                                        VoiceService.speakAlert(
+                                          title: title,
+                                          body: desc,
+                                          level: level.toString(),
+                                        );
+                                      },
+                                      tooltip: 'Escuchar alerta por voz',
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      time,
+                                      style: const TextStyle(color: Colors.white38, fontSize: 10),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

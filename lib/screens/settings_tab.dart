@@ -3,6 +3,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/local_extractor_service.dart';
+import '../services/notification_service.dart';
+import '../services/gps_service.dart';
+import '../services/voice_service.dart';
+import '../services/crypto_vault_service.dart';
+import '../services/tactical_camera_service.dart';
+import '../services/widget_service.dart';
 
 class SettingsTab extends StatefulWidget {
   const SettingsTab({super.key});
@@ -572,6 +578,214 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         const SizedBox(height: 10),
 
         _textField(_maxAgeHoursController, 'Antigüedad Máxima de Noticias (Horas)', Icons.hourglass_bottom),
+        const SizedBox(height: 16),
+
+        _sectionTitle('🔔 PRUEBA DE NOTIFICACIONES Y BURBUJA FLOTANTE'),
+        const SizedBox(height: 6),
+        ElevatedButton.icon(
+          onPressed: () async {
+            await NotificationService.showAlertNotification(
+              title: 'CIBERATAQUE DETECTADO (PRUEBA)',
+              body: 'Notificación de alerta táctica recibida con éxito en la barra de estado de Android.',
+              level: 'CRÍTICA',
+              showFloatingOverlay: false,
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('🔔 Notificación enviada a la barra de estado.'),
+                  backgroundColor: Color(0xFF00E5FF),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.notifications_active, size: 18),
+          label: const Text('ENVIAR NOTIFICACIÓN A BARRA DE ESTADO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00E5FF).withOpacity(0.2),
+            foregroundColor: const Color(0xFF00E5FF),
+            side: const BorderSide(color: Color(0xFF00E5FF)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () async {
+            await NotificationService.showFloatingBubble(
+              title: 'INCIDENTE CRÍTICO OSINT',
+              body: 'Superposición táctica activada sobre el sistema Android. Toca CERRAR HUD para ocultar.',
+              level: 'DEFCON 2',
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('🫧 Ventana / HUD flotante activada sobre pantalla.'),
+                  backgroundColor: Color(0xFF00FFAA),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.bubble_chart, size: 18),
+          label: const Text('DESPLEGAR BURBUJA / HUD FLOTANTE (OVERLAY)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00FFAA).withOpacity(0.2),
+            foregroundColor: const Color(0xFF00FFAA),
+            side: const BorderSide(color: Color(0xFF00FFAA)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () async {
+            final pos = await GpsService.getCurrentPosition();
+            if (pos != null) {
+              await GpsService.evaluateGeofenceAlert(
+                eventLat: pos.latitude + 0.01,
+                eventLon: pos.longitude + 0.01,
+                title: 'INCIDENTE DE PROXIMIDAD (PRUEBA)',
+                level: 'CRÍTICA',
+                radiusKm: 15.0,
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('🛰️ GPS Activo: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}. Geocerca verificada.'),
+                    backgroundColor: const Color(0xFF00FFAA),
+                  ),
+                );
+              }
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('⚠️ No se pudo obtener la posición GPS. Revisa permisos.'),
+                    backgroundColor: Color(0xFFFF2D55),
+                  ),
+                );
+              }
+            }
+          },
+          icon: const Icon(Icons.my_location, size: 18),
+          label: const Text('PROBAR GEOCERCA Y SENSORES GPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFF9500).withOpacity(0.2),
+            foregroundColor: const Color(0xFFFF9500),
+            side: const BorderSide(color: Color(0xFFFF9500)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () async {
+            await VoiceService.speakAlert(
+              title: 'PRUEBA DE SINTETIZADOR DE VOZ',
+              body: 'El canal auditivo militar de COBALTO se encuentra completamente activo y listo para operarse con manos libres.',
+              level: 'DEFCON 1',
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('🔊 Reproduciendo lectura por voz sintética militar.'),
+                  backgroundColor: Color(0xFF00E5FF),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.record_voice_over, size: 18),
+          label: const Text('PROBAR SINTETIZADOR Y LECTURA DE VOZ (TTS)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFBF5AF2).withOpacity(0.2),
+            foregroundColor: const Color(0xFFBF5AF2),
+            side: const BorderSide(color: Color(0xFFBF5AF2)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () async {
+            final vaultStatus = await CryptoVaultService.checkVaultStatus();
+            if (mounted) {
+              final isSecure = vaultStatus['secure'] == true;
+              final algo = vaultStatus['key_algorithm'] ?? 'AES-256';
+              final bits = vaultStatus['key_bits'] ?? 256;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    isSecure
+                        ? '🔒 Bóveda de Datos Cifrada Activa [$algo / $bits-bits]. Clave protegida en Android KeyStore.'
+                        : '⚠️ Bóveda local operando en modo fallback.',
+                  ),
+                  backgroundColor: isSecure ? const Color(0xFF00FFAA) : const Color(0xFFFF9500),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.security, size: 18),
+          label: const Text('VERIFICAR BÓVEDA CIFRADA (AES-256 / KEYSTORE)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF30D158).withOpacity(0.2),
+            foregroundColor: const Color(0xFF30D158),
+            side: const BorderSide(color: Color(0xFF30D158)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () async {
+            final pos = await GpsService.getCurrentPosition();
+            final lat = pos?.latitude ?? 10.4806;
+            final lon = pos?.longitude ?? -66.9036;
+
+            final photo = await TacticalCameraService.captureTelemetryPhoto(
+              lat: lat,
+              lon: lon,
+              classification: 'CONFIDENCIAL // OPERADOR C4I',
+            );
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    photo != null
+                        ? '📷 Fotografía estampada con telemetría GPS [$lat, $lon].'
+                        : '⚠️ No se pudo inicializar la cámara o permiso denegado.',
+                  ),
+                  backgroundColor: photo != null ? const Color(0xFF00E5FF) : const Color(0xFFFF2D55),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.camera_alt, size: 18),
+          label: const Text('PROBAR CÁMARA TÁCTICA Y TELEMETRÍA GPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF64D2FF).withOpacity(0.2),
+            foregroundColor: const Color(0xFF64D2FF),
+            side: const BorderSide(color: Color(0xFF64D2FF)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          onPressed: () async {
+            await WidgetService.syncWidgetFromLocalDb();
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('📱 Widget Nativo de Android actualizado con inteligencia SitRep local.'),
+                  backgroundColor: Color(0xFF00FFAA),
+                ),
+              );
+            }
+          },
+          icon: const Icon(Icons.widgets, size: 18),
+          label: const Text('PROBAR ACTUALIZACIÓN DE WIDGET DE PANTALLA DE INICIO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF5E5CE6).withOpacity(0.2),
+            foregroundColor: const Color(0xFF5E5CE6),
+            side: const BorderSide(color: Color(0xFF5E5CE6)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
         const SizedBox(height: 16),
 
         _sectionTitle('🧹 LIMPIEZA DE MEMORIA LOCAL'),

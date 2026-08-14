@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'crypto_vault_service.dart';
 
 class LocalDbService {
   static Database? _database;
@@ -151,18 +152,21 @@ class LocalDbService {
   static Future<void> saveFieldReport(Map<String, dynamic> report) async {
     try {
       final db = await database;
+      final rawDesc = report['description'] ?? '';
+      final encryptedDesc = await CryptoVaultService.encryptText(rawDesc);
+
       await db.insert(
         'field_reports',
         {
           'id': report['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
           'title': report['title'] ?? 'Reporte de Campo',
-          'description': report['description'] ?? '',
+          'description': encryptedDesc,
           'threat_level': report['threat_level'] ?? 'ELEVATED',
           'lat': report['lat'] ?? 0.0,
           'lng': report['lng'] ?? 0.0,
           'image_path': report['image_path'] ?? '',
           'timestamp': report['timestamp'] ?? DateTime.now().toIso8601String(),
-          'synced': report['synced'] == true ? 1 : 0,
+          'synced': (report['synced'] == true || report['synced'] == 1) ? 1 : 0,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
@@ -184,7 +188,15 @@ class LocalDbService {
     try {
       final db = await database;
       final maps = await db.query('field_reports', orderBy: 'timestamp DESC');
-      return maps.map((m) => Map<String, dynamic>.from(m)).toList();
+      final List<Map<String, dynamic>> results = [];
+
+      for (final m in maps) {
+        final Map<String, dynamic> mutable = Map<String, dynamic>.from(m);
+        final encDesc = mutable['description']?.toString() ?? '';
+        mutable['description'] = await CryptoVaultService.decryptText(encDesc);
+        results.add(mutable);
+      }
+      return results;
     } catch (_) {
       final prefs = await SharedPreferences.getInstance();
       final str = prefs.getString('local_field_reports');

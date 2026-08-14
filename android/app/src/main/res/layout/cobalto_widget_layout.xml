@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#10131D"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="COBALTO C4I HUB"
+            android:textColor="#00E5FF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_defcon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="DEFCON 3"
+            android:textColor="#FF9500"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:background="#20FF9500"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginVertical="6dp"
+        android:background="#00E5FF" />
+
+    <TextView
+        android:id="@+id/widget_alerts_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ALERTAS ACTIVAS: 0"
+        android:textColor="#00FFAA"
+        android:textSize="10sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_headline"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Esperando sincronización de inteligencia SITREP..."
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+</LinearLayout>

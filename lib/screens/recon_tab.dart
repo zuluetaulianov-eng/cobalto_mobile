@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../services/gps_service.dart';
+import '../services/tactical_camera_service.dart';
 
 class ReconTab extends StatefulWidget {
   const ReconTab({super.key});
@@ -15,12 +18,14 @@ class _ReconTabState extends State<ReconTab> {
   bool _isExecuting = false;
   Map<String, dynamic>? _resultData;
   String? _errorMessage;
+  String? _lastCapturedPhotoPath;
 
   final Map<String, String> _tools = {
     'IP_GEOLOC': '🌐 Geolocalización de IP (País, ISP, Coordenadas)',
     'DNS_LOOKUP': '🔍 Consulta DNS (Registros A, MX, NS, TXT)',
     'WHOIS_RDAP': '📋 Consulta WHOIS / RDAP de Dominio o IP',
     'CVE_SEARCH': '🛡️ Búsqueda de Vulnerabilidades CVE (NIST NVD)',
+    'TAC_CAMERA': '📷 Captura Fotográfica con Telemetría GPS (Geotagging)',
   };
 
   Future<void> _runReconTool() async {
@@ -61,6 +66,30 @@ class _ReconTabState extends State<ReconTab> {
           _resultData = json.decode(res.body);
         } else {
           _errorMessage = 'Fallo al consultar la base de datos NVD CVE.';
+        }
+      } else if (_selectedTool == 'TAC_CAMERA') {
+        final pos = await GpsService.getCurrentPosition();
+        final double lat = pos?.latitude ?? 10.4806;
+        final double lon = pos?.longitude ?? -66.9036;
+
+        final photoPath = await TacticalCameraService.captureTelemetryPhoto(
+          lat: lat,
+          lon: lon,
+          classification: 'CONFIDENCIAL // COBALTO RECON',
+        );
+
+        if (photoPath != null) {
+          _lastCapturedPhotoPath = photoPath;
+          _resultData = {
+            'status': 'FOTOGRAFÍA CAPTURADA CON ÉXITO Y ESTAMPADA EN DISCO',
+            'latitude': lat,
+            'longitude': lon,
+            'zulu_timestamp': DateTime.now().toUtc().toIso8601String(),
+            'saved_path': photoPath,
+            'security': 'CONFIDENCIAL // COBALTO C4I',
+          };
+        } else {
+          _errorMessage = 'No se pudo capturar la fotografía. Verifique el sensor de la cámara o los permisos.';
         }
       }
     } catch (e) {
@@ -205,13 +234,29 @@ class _ReconTabState extends State<ReconTab> {
                             ),
                           )
                         : SingleChildScrollView(
-                            child: SelectableText(
-                              const JsonEncoder.withIndent('  ').convert(_resultData),
-                              style: const TextStyle(
-                                color: Color(0xFF00FFAA),
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                              ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_selectedTool == 'TAC_CAMERA' && _lastCapturedPhotoPath != null && File(_lastCapturedPhotoPath!).existsSync()) ...[
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.file(
+                                      File(_lastCapturedPhotoPath!),
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                SelectableText(
+                                  const JsonEncoder.withIndent('  ').convert(_resultData),
+                                  style: const TextStyle(
+                                    color: Color(0xFF00FFAA),
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
               ),

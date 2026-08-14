@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/local_db_service.dart';
 import '../services/cobalto_api_service.dart';
+import '../services/voice_service.dart';
 
 class HumintTab extends StatefulWidget {
   const HumintTab({super.key});
@@ -18,6 +19,7 @@ class _HumintTabState extends State<HumintTab> {
   String _threatLevel = 'ELEVATED';
   bool _isSaving = false;
   bool _isSyncing = false;
+  bool _isListening = false;
   List<Map<String, dynamic>> _reports = [];
 
   final Map<String, Color> _threatColors = {
@@ -129,6 +131,32 @@ class _HumintTabState extends State<HumintTab> {
     }
   }
 
+  Future<void> _toggleVoiceDictation() async {
+    if (_isListening) {
+      await VoiceService.stopListening();
+      if (mounted) setState(() => _isListening = false);
+    } else {
+      setState(() => _isListening = true);
+      await VoiceService.startListening(
+        onListeningStarted: () {
+          if (mounted) setState(() => _isListening = true);
+        },
+        onResult: (text, isFinal) {
+          if (mounted) {
+            setState(() {
+              if (_titleController.text.isEmpty) {
+                _titleController.text = text;
+              } else {
+                _descController.text = text;
+              }
+              if (isFinal) _isListening = false;
+            });
+          }
+        },
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -174,11 +202,35 @@ class _HumintTabState extends State<HumintTab> {
               decoration: BoxDecoration(
                 color: const Color(0xFF141824),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(
+                  color: _isListening ? const Color(0xFFFF2D55) : Colors.white10,
+                  width: _isListening ? 1.5 : 1.0,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Botón Micrófono para Dictado por Voz Táctico
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _toggleVoiceDictation,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: _isListening ? const Color(0xFFFF2D55).withOpacity(0.2) : Colors.black26,
+                        foregroundColor: _isListening ? const Color(0xFFFF2D55) : const Color(0xFF00FFAA),
+                        side: BorderSide(
+                          color: _isListening ? const Color(0xFFFF2D55) : const Color(0xFF00FFAA),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      icon: Icon(_isListening ? Icons.graphic_eq : Icons.mic, size: 18),
+                      label: Text(
+                        _isListening ? '🔴 ESCUCHANDO DICTADO... (TOCA PARA DETENER)' : '🎙️ DICTAR REPORTE POR VOZ (ESPAÑOL)',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: _titleController,
                     style: const TextStyle(color: Colors.white, fontSize: 13),

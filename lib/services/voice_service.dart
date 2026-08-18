@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import 'app_logger.dart';
+import 'settings_persistence_service.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 class VoiceService {
@@ -12,9 +13,28 @@ class VoiceService {
   static bool _isTtsInitialized = false;
   static bool _isListening = false;
   static bool _isSpeaking = false;
+  static bool _silentMode = false;
 
   static bool get isListening => _isListening;
   static bool get isSpeaking => _isSpeaking;
+  static bool get silentMode => _silentMode;
+
+  /// Carga el modo silencio (mute táctico) persistido en el dispositivo.
+  static Future<void> loadSilentMode() async {
+    _silentMode = await SettingsPersistenceService.isSilentModeEnabled();
+  }
+
+  /// Activa/desactiva el modo silencio: ninguna alerta se pronuncia.
+  static Future<void> setSilentMode(bool enabled) async {
+    _silentMode = enabled;
+    await SettingsPersistenceService.saveSilentModeEnabled(enabled);
+    if (enabled && _isSpeaking) {
+      await stopSpeech();
+    }
+    if (enabled && _isListening) {
+      await stopListening();
+    }
+  }
 
   /// Inicializa el motor de Reconocimiento de Voz (STT)
   static Future<bool> initSpeech() async {
@@ -77,6 +97,12 @@ class VoiceService {
       return;
     }
 
+    // Guard mutuo: el micrófono y el altavoz no pueden operar a la vez.
+    // Si una alerta se está pronunciando, la detenemos antes de escuchar.
+    if (_isSpeaking) {
+      await stopSpeech();
+    }
+
     _isListening = true;
     if (onListeningStarted != null) onListeningStarted();
 
@@ -103,12 +129,18 @@ class VoiceService {
     }
   }
 
-  /// Lee auditivamente por altavoz una alerta táctica
+  /// Lee auditivamente por altavoz una alerta táctica.
+  /// Respeta el modo silencio y no interrumpe una dictado STT en curso.
   static Future<void> speakAlert({
     required String title,
     required String body,
     String level = 'ALTA',
   }) async {
+    if (_silentMode) return;
+
+    // Guard mutuo: no pronunciar mientras el operador dicta por micrófono.
+    if (_isListening) return;
+
     await initTts();
     if (_isSpeaking) {
       await stopSpeech();
@@ -119,6 +151,23 @@ class VoiceService {
       await _flutterTts.speak(message);
     } catch (e) {
       debugPrint('⚠️ Error al reproducir audio TTS: $e');
+    }
+  }
+
+  /// Lee en voz alta un texto libre (ej: respuesta del asistente IA),
+  /// respetando modo silencio y sin colisionar con el micrófono.
+  static Future<void> speakText(String text) async {
+    if (_silentMode) return;
+    if (_isListening) return;
+
+    await initTts();
+    if (_isSpeaking) {
+      await stopSpeech();
+    }
+    try {
+      await _flutterTts.speak(text);
+    } catch (e) {
+      debugPrint('⚠️ Error al reproducir texto TTS: $e');
     }
   }
 

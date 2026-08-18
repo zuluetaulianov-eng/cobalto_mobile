@@ -20,6 +20,7 @@ class LocalAuthService {
   static const String _usernameKey = 'local_operator_username';
   static const String _saltKey = 'local_operator_salt';
   static const String _hashKey = 'local_operator_hash';
+  static const String _duressKey = 'local_operator_duress';
 
   static const int _minUsernameLength = 3;
   static const int _minPasswordLength = 4;
@@ -91,6 +92,51 @@ class LocalAuthService {
       debugPrint('⚠️ Error validando credenciales locales: $e');
       return false;
     }
+  }
+
+  // ── COACCIÓN (DURESS) ──
+
+  /// Configura la contraseña de coacción. Si el operador la usa para
+  /// desbloquear, la app entra con apariencia normal pero dispara un SOS
+  /// silencioso. Devuelve `true` si se registró, `false` si el código es débil.
+  static Future<bool> setDuressCode(String code) async {
+    if (code.length < _minPasswordLength) return false;
+    final salt = base64Encode(_randomBytes(16));
+    final hash = _derive(code, salt);
+    await _storage.write(key: _duressKey, value: '$salt:$hash');
+    return true;
+  }
+
+  /// Indica si existe una contraseña de coacción configurada.
+  static Future<bool> hasDuressCode() async {
+    try {
+      final stored = await _storage.read(key: _duressKey);
+      return stored != null && stored.isNotEmpty;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Valida si el código ingresado corresponde a la contraseña de coacción.
+  static Future<bool> verifyDuress(String code) async {
+    try {
+      final stored = await _storage.read(key: _duressKey);
+      if (stored == null || stored.isEmpty) return false;
+      final separator = stored.lastIndexOf(':');
+      if (separator <= 0) return false;
+      final salt = stored.substring(0, separator);
+      final storedHash = stored.substring(separator + 1);
+      final candidate = _derive(code, salt);
+      return _constantTimeEquals(candidate, storedHash);
+    } catch (e) {
+      debugPrint('⚠️ Error validando coacción local: $e');
+      return false;
+    }
+  }
+
+  /// Elimina la contraseña de coacción configurada.
+  static Future<void> clearDuressCode() async {
+    await _storage.delete(key: _duressKey);
   }
 
   // ── EDICIÓN DE CREDENCIALES ──

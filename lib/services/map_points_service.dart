@@ -34,17 +34,33 @@ class MapPointsService {
   static Future<List<Map<String, dynamic>>> buildDynamicPoints() async {
     final dynamicPoints = <Map<String, dynamic>>[];
 
-    // 0. Ubicación GPS en Vivo del Operador
-    final currentPos = await GpsService.getCurrentPosition();
-    if (currentPos != null) {
+    // 0. Ubicación GPS en Vivo del Operador (telemetría del stream si es fresca)
+    final TacticalSnapshot? snapshot = GpsService.lastSnapshot;
+    final bool snapshotFresh = snapshot != null &&
+        DateTime.now().toUtc().difference(snapshot.timestampUtc).inSeconds <= 60;
+    if (snapshotFresh) {
       dynamicPoints.add({
-        'lat': currentPos.latitude,
-        'lon': currentPos.longitude,
+        'lat': snapshot.lat,
+        'lon': snapshot.lon,
         'title': '🛰️ OPERADOR (MI UBICACIÓN GPS)',
         'type': 'OPERATOR',
-        'desc': 'Posición actual en tiempo real obtenida del sensor GPS del dispositivo.',
+        'desc': snapshot.accuracyM != null
+            ? 'Telemetría en vivo: precisión ±${snapshot.accuracyM!.round()} m, ${snapshot.speedKtsLabel}.'
+            : 'Posición actual en tiempo real obtenida del sensor GPS del dispositivo.',
         'color': '#00FFAA'
       });
+    } else {
+      final currentPos = await GpsService.getCurrentPosition();
+      if (currentPos != null) {
+        dynamicPoints.add({
+          'lat': currentPos.latitude,
+          'lon': currentPos.longitude,
+          'title': '🛰️ OPERADOR (MI UBICACIÓN GPS)',
+          'type': 'OPERATOR',
+          'desc': 'Posición actual obtenida del sensor GPS del dispositivo.',
+          'color': '#00FFAA'
+        });
+      }
     }
 
     // 1. Añadir Nodo Central Fijo

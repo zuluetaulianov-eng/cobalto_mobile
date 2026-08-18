@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/app_logger.dart';
 import '../services/cobalto_api_service.dart';
+import '../services/voice_service.dart';
 
 class ChatMessage {
   final String text;
@@ -30,6 +31,7 @@ class _AiChatTabState extends State<AiChatTab> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _isSending = false;
+  bool _isDictating = false;
   String _selectedPersona = 'GENERAL';
 
   final Map<String, String> _personas = {
@@ -120,6 +122,36 @@ class _AiChatTabState extends State<AiChatTab> {
         );
       }
     });
+  }
+
+  // Dictado por micrófono: transcribe voz a texto en el campo de consulta.
+  void _toggleDictation() async {
+    if (_isDictating) {
+      await VoiceService.stopListening();
+      return;
+    }
+    setState(() => _isDictating = true);
+    await VoiceService.startListening(
+      onListeningStarted: () {
+        if (mounted) setState(() => _isDictating = true);
+      },
+      onResult: (text, isFinal) {
+        if (!mounted) return;
+        if (text.isNotEmpty) {
+          _controller.text = text;
+          _controller.selection = TextSelection.collapsed(offset: text.length);
+        }
+      },
+    );
+    if (mounted) setState(() => _isDictating = false);
+  }
+
+  @override
+  void dispose() {
+    VoiceService.stopListening();
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -219,7 +251,19 @@ class _AiChatTabState extends State<AiChatTab> {
                               fontFamily: 'monospace',
                             ),
                           ),
-                          Text(msg.time, style: const TextStyle(color: Colors.white30, fontSize: 9)),
+                          Row(
+                            children: [
+                              if (!msg.isUser)
+                                InkWell(
+                                  onTap: () => VoiceService.speakText(msg.text),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 4),
+                                    child: Icon(Icons.volume_up, size: 14, color: Color(0xFF00E5FF)),
+                                  ),
+                                ),
+                              Text(msg.time, style: const TextStyle(color: Colors.white30, fontSize: 9)),
+                            ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -264,6 +308,16 @@ class _AiChatTabState extends State<AiChatTab> {
                   ),
                   onSubmitted: (_) => _sendMessage(),
                 ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                style: IconButton.styleFrom(
+                  backgroundColor: _isDictating ? const Color(0xFFFF2D55) : const Color(0xFF141824),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                icon: Icon(_isDictating ? Icons.mic : Icons.mic_none, color: const Color(0xFF00E5FF), size: 18),
+                onPressed: _toggleDictation,
+                tooltip: _isDictating ? 'Detener dictado' : 'Dictar consulta por voz',
               ),
               const SizedBox(width: 8),
               IconButton(

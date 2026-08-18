@@ -853,14 +853,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.1+1"
-  system_alert_window:
-    dependency: "direct main"
-    description:
-      name: system_alert_window
-      sha256: ae73fc1b04ea1cb80162835fe6a3a569813b85d05f2902312adef8248603aa31
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.11"
   term_glyph:
     dependency: transitive
     description:

@@ -22,6 +22,9 @@ graph TD
     F --> G["✅ Capacidad Táctica: Escáner OCR Offline"]
     G --> H["✅ Capacidad Táctica: Dead Man's Switch (SOS)"]
     H --> I["⚡ Estabilización: Multi-Isolates & Anti-ANR"]
+    I --> J["✅ Fase 6: Telemetría GPS en Vivo & HUD Cámara"]
+    J --> K["✅ Fase 7: Sistema de Emergencias Integral (Pánico/Duress/Heartbeat/Sirena)"]
+    K --> L["⚡ Optimización: Ciclo de Vida & Navegación Responsiva"]
 ```
 
 ### 1. 👁️ Modo Sigilo / Visión Nocturna (NVG) (`StealthService`)
@@ -43,21 +46,44 @@ graph TD
 ### 5. 📱 Widget Nativo para Pantalla de Inicio en Android (`WidgetService`)
 - Transmisión en tiempo real del nivel **DEFCON**, conteo de **alertas activas** y el **titular SitRep más reciente** a la pantalla de inicio del teléfono (`cobalto_widget_layout.xml`).
 
+### 6. 🛰️ Telemetría GPS en Vivo & HUD de Cámara Táctica (`GpsService`, `TacticalCameraService`)
+- **Snapshot táctico unificado** (`TacticalSnapshot`): lat/lon, altitud, rumbo, velocidad (KT), precisión y timestamp UTC expuesto como `ValueNotifier` en vivo compartido por mapa, HUD, geocercas y SOS — con `distanceFilter: 5 m` para ahorrar batería.
+- **Cámara táctica con HUD en vivo**: overlay de telemetría GPS en tiempo real, flash, conmutación de sensor y **linterna de emergencia** (torch).
+- **Forense fotográfico**: cada captura genera un sidecar JSON con SHA-256, coordenadas y UTC, registra un `FieldReport` y se sube a `/api/humint/report`; sin fix, muestra **"SIN FIJACIÓN"** (nunca estampa coordenadas falsas).
+
+### 7. 🆘 Sistema de Emergencias Integral (`EmergencyService`)
+- **Botón PÁNICO global** con retención de 3 s (anti-activación accidental) que transmite SOS con telemetría fresca (fallback a fijación puntual si el stream está obsoleto).
+- **Coacción (Duress)**: contraseña camuflada en el login que entra con normalidad aparente mientras transmite un SOS silencioso.
+- **Sirena de localización** (`EmergencyAlarmScreen`): estroboscopio rojo ~2.5 Hz, patrón háptico SOS, linterna, telemetría en vivo y cancelación explícita; el botón "atrás" del sistema queda **bloqueado** (PopScope).
+- **Heartbeat de telemetría**: latido periódico (`/api/sos`) para que la base detecte la pérdida del operador; intervalo y activación configurables.
+- **Escalada a contacto**: sin ACK del servidor, intenta SMS y llamada al contacto de emergencia configurado.
+- **Timeline forense** (`emergency_log` en SQLite v3) con registro de pánico, coacción, escaladas y cancelaciones.
+- **Dead Man's Switch mejorado**: detección de caída + inmovilización + **arrastre/transporte**, foto de contexto automática y cancelación por cualquier toque.
+
+### 8. 🔋 Gestión de Poder & 🧭 Navegación Responsiva
+- **Ciclo de vida** (`PowerManagementService`): al pasar a segundo plano se suspende el stream GPS continuo (el mayor consumo) y se restaura al volver; los servicios de seguridad (dead-man, heartbeat) permanecen activos.
+- **Navegación responsiva**: la barra inferior reduce de 9 a **5 módulos esenciales** (SitRep, Mapa, Alertas, IA Chat, Ajustes) con tipografía 12 px legible; el resto (HUMINT, Recon, OFAC, Vivo) queda en un **cajón "MÓDULOS"**. En tabletas / apaisado (≥600 dp) se usa un **panel lateral** (`NavigationRail`).
+- **AppBar compacto**: solo el botón de pánico; NVG y chip de identidad de red viven en una franja de estado táctica sin saturar la barra superior.
+
 ---
 
-## 🏛️ Arquitectura de la Interfaz (9 Pestañas Tácticas)
+## 🏛️ Arquitectura de la Interfaz (Navegación Responsiva)
 
-| Icono | Pestaña | Propósito Táctico |
+La app expone **9 módulos tácticos**. En teléfonos, la barra inferior muestra los **5 esenciales** (SitRep, Mapa, Alertas, IA Chat, Ajustes) y el resto se alcanza desde el **cajón "MÓDULOS COBALTO C4I"** (icono ☰); en tabletas / apaisado el cuerpo cambia a panel lateral.
+
+| Icono | Módulo | Propósito Táctico |
 |---|---|---|
 | 📰 | **SitRep** | Feed de novedades con filtrado por relevancia, persistencia SQLite `cobalto_edge.db` y exportación de tarjetas PNG HD optimizadas. |
 | 🗺️ | **Mapa** | Cartografía interactiva Leaflet (Modo Vectorial Oscuro / Satelital HD) con radar GPS del operador en vivo. |
 | ⚠️ | **Alertas** | Sistema de criticidad de incidentes con avisos de geocerca, notificaciones Android y lectura por voz sintetizada (TTS). |
 | 🎯 | **HUMINT** | Captura de reportes de campo cifrados con dictado por voz (STT), coordenadas GPS y sincronización de servidor. |
-| 🛠️ | **Recon** | Kit OSINT (WHOIS, DNS, IP Geoloc, CVEs), Escáner OCR Offline y Cámara Táctica con telemetría en Isolate. |
+| 🛠️ | **Recon** | Kit OSINT (WHOIS, DNS, IP Geoloc, CVEs), Escáner OCR Offline y Cámara Táctica HUD con telemetría en vivo. |
 | 🔍 | **OFAC** | Verificador de sanciones globales, listas SDN y trazabilidad Blockchain en tiempo real. |
-| 🤖 | **IA Chat** | Consola táctica interactiva con selección de personas (`GENERAL`, `ARES`, `MINERVA`, `NEXUS`) y motor autónomo local. |
+| 🤖 | **IA Chat** | Consola táctica interactiva con selección de personas (`GENERAL`, `ARES`, `MINERVA`, `NEXUS`), dictado por voz y lectura de respuestas. |
 | 📡 | **Vivo** | Telemetría de vuelos comerciales/militares y sensores telúricos/térmicos en tiempo real (USGS / FIRMS). |
-| ⚙️ | **Ajustes** | Centro de control de parámetros con conmutador NVG, probador SOS de Hombre Muerto y limpiador de caché. |
+| ⚙️ | **Ajustes** | Centro de control con conmutador NVG, calibración del monitor de hombre muerto, **plan de emergencia** (contacto, heartbeat, código de coacción) y limpiador de caché. |
+
+> **Franja de estado táctica**: bajo el AppBar se muestra el conmutador de sigilo (NVG), el estado de red y, cuando aplica, la franja de vigilancia del dead-man y el banner de SOS.
 
 ---
 
@@ -70,8 +96,8 @@ graph TD
 
 ## 📋 Requisitos de Sistema
 
-- **SDK de Flutter:** 3.19.0 o superior
-- **Dart SDK:** 3.3.0 o superior
+- **SDK de Flutter:** 3.22 o superior (probado en **3.44 stable**)
+- **Dart SDK:** 3.6 o superior
 - **SO Objetivo:** Android 8.0 (API 26) en adelante
 - **Herramientas de Compilación:** Java JDK 17, Android Studio / Gradle
 
@@ -81,8 +107,8 @@ graph TD
 
 ### 1. Clonar el repositorio del cliente móvil
 ```bash
-git clone https://github.com/tu-usuario/cobalto-mobile.git
-cd cobalto-mobile
+git clone https://github.com/zuluetaulianov-eng/cobalto_mobile.git
+cd cobalto_mobile
 ```
 
 ### 2. Obtener dependencias de Flutter

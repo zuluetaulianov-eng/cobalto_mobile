@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../services/crypto_vault_service.dart';
 import '../services/dead_man_switch_service.dart';
+import '../services/emergency_service.dart';
 import '../services/gps_service.dart';
 import '../services/local_auth_service.dart';
 import '../services/notification_service.dart';
@@ -11,6 +12,7 @@ import '../services/stealth_service.dart';
 import '../services/tactical_camera_service.dart';
 import '../services/voice_service.dart';
 import '../services/widget_service.dart';
+import '../widgets/geofence_manager_sheet.dart';
 import '../widgets/operator_credentials_dialog.dart';
 import '../widgets/settings_components.dart';
 
@@ -52,6 +54,17 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   bool? _isConnected;
   String _statusMessage = 'Cargando ajustes tácticos...';
   String _operatorUsername = '';
+  bool _voiceAnnounceEnabled = false;
+  bool _silentModeEnabled = false;
+  late final TextEditingController _impactThresholdController =
+      TextEditingController(text: DeadManSwitchService.impactThreshold.toStringAsFixed(1));
+  late final TextEditingController _immobilizedController =
+      TextEditingController(text: DeadManSwitchService.immobilizedMinutes.toString());
+  late final TextEditingController _emergencyContactController = TextEditingController();
+  late final TextEditingController _duressController = TextEditingController();
+  late final TextEditingController _heartbeatIntervalController = TextEditingController(text: '5');
+  bool _heartbeatEnabled = false;
+  bool _hasDuressCode = false;
 
   final List<String> _ollamaModels = [
     'llama3.2',
@@ -89,6 +102,13 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   Future<void> _loadAllSettings() async {
     final result = await SettingsPersistenceService.loadSettings();
     final operatorName = await LocalAuthService.getUsername() ?? '';
+    final voiceAnnounce = await SettingsPersistenceService.isVoiceAnnounceEnabled();
+    final silentMode = await SettingsPersistenceService.isSilentModeEnabled();
+    await VoiceService.loadSilentMode();
+    final contact = await EmergencyService.getContactPhone();
+    final heartbeatEnabled = await EmergencyService.isHeartbeatEnabled();
+    final heartbeatMinutes = await EmergencyService.getHeartbeatMinutes();
+    final hasDuress = await LocalAuthService.hasDuressCode();
 
     if (mounted) {
       setState(() {
@@ -96,6 +116,12 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         _sources = result.sources;
         _isConnected = result.connected;
         _operatorUsername = operatorName;
+        _voiceAnnounceEnabled = voiceAnnounce;
+        _silentModeEnabled = silentMode;
+        _emergencyContactController.text = contact;
+        _heartbeatEnabled = heartbeatEnabled;
+        _heartbeatIntervalController.text = heartbeatMinutes.toString();
+        _hasDuressCode = hasDuress;
         _statusMessage = result.connected == true
             ? 'Sincronizado con Estación Base PC'
             : 'Modo Autónomo Local (Dispositivo)';
@@ -678,7 +704,7 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         SettingsTextField(_maxAgeHoursController, label: 'Antigüedad Máxima de Noticias (Horas)', icon: Icons.hourglass_bottom),
         const SizedBox(height: 16),
 
-        const SettingsSectionTitle('🔔 PRUEBA DE NOTIFICACIONES Y BURBUJA FLOTANTE'),
+        const SettingsSectionTitle('🔔 PRUEBA DE NOTIFICACIONES Y VOZ'),
         const SizedBox(height: 6),
         TacticalActionButton(
           icon: Icons.notifications_active,
@@ -687,18 +713,61 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
           onPressed: _testNotification,
         ),
         const SizedBox(height: 8),
-        TacticalActionButton(
-          icon: Icons.bubble_chart,
-          label: 'DESPLEGAR BURBUJA / HUD FLOTANTE (OVERLAY)',
-          color: const Color(0xFF00FFAA),
-          onPressed: _testFloatingBubble,
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            '🔊 ANUNCIAR ALERTAS POR VOZ (TTS)',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+          ),
+          subtitle: const Text(
+            'Al llegar una notificación CRÍTICA/ALTA, COBALTO la pronuncia por el altavoz.',
+            style: TextStyle(fontSize: 10, color: Colors.white54),
+          ),
+          value: _voiceAnnounceEnabled,
+          activeTrackColor: const Color(0xFFBF5AF2),
+          onChanged: (value) async {
+            setState(() => _voiceAnnounceEnabled = value);
+            await SettingsPersistenceService.saveVoiceAnnounceEnabled(value);
+            if (value) {
+              await VoiceService.speakAlert(
+                title: 'ANUNCIO POR VOZ ACTIVADO',
+                body: 'Las alertas tácticas serán pronunciadas por el canal auditivo.',
+                level: 'ALTA',
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 4),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            '🔇 MODO SILENCIO (MUTE TÁCTICO)',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+          ),
+          subtitle: const Text(
+            'Suprime toda lectura por voz. Prioridad: no interrumpe dictado STT en curso.',
+            style: TextStyle(fontSize: 10, color: Colors.white54),
+          ),
+          value: _silentModeEnabled,
+          activeTrackColor: const Color(0xFFFF2D55),
+          onChanged: (value) async {
+            setState(() => _silentModeEnabled = value);
+            await VoiceService.setSilentMode(value);
+          },
         ),
         const SizedBox(height: 8),
         TacticalActionButton(
           icon: Icons.my_location,
-          label: 'PROBAR GEOCERCA Y SENSORES GPS',
+          label: 'PROBAR SENSORES GPS Y OBTENER POSICIÓN',
           color: const Color(0xFFFF9500),
           onPressed: _testGeofence,
+        ),
+        const SizedBox(height: 8),
+        TacticalActionButton(
+          icon: Icons.radar,
+          label: 'GESTIONAR GEOCERCAS Y MONITOREO GPS',
+          color: const Color(0xFF00FFAA),
+          onPressed: _openGeofenceManager,
         ),
         const SizedBox(height: 8),
         TacticalActionButton(
@@ -742,6 +811,191 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
           color: const Color(0xFFFF9500),
           onPressed: _toggleDeadManSwitch,
         ),
+        const SizedBox(height: 8),
+        const SettingsSectionTitle('☠️ CALIBRACIÓN MONITOR HOMBRE MUERTO'),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _impactThresholdController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: InputDecoration(
+                  labelText: 'UMBRAL IMPACTO (m/s²)',
+                  labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+                  filled: true,
+                  fillColor: const Color(0xFF141824),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _immobilizedController,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: InputDecoration(
+                  labelText: 'INMOVILIDAD (min)',
+                  labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+                  filled: true,
+                  fillColor: const Color(0xFF141824),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        TacticalActionButton(
+          icon: Icons.tune,
+          label: 'APLICAR CALIBRACIÓN DE DETECCIÓN',
+          color: const Color(0xFF00E5FF),
+          onPressed: _applyDeadManCalibration,
+        ),
+        const SizedBox(height: 16),
+
+        const SettingsSectionTitle('🆘 PLAN DE EMERGENCIA Y CONTACTO'),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _emergencyContactController,
+          keyboardType: TextInputType.phone,
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+          decoration: InputDecoration(
+            labelText: '📞 CONTACTO DE EMERGENCIA (teléfono)',
+            labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+            hintText: '+58 412 000 0000',
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 11),
+            filled: true,
+            fillColor: const Color(0xFF141824),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TacticalActionButton(
+          icon: Icons.save,
+          label: 'GUARDAR CONTACTO DE EMERGENCIA (SMS/LLAMADA)',
+          color: const Color(0xFFFF9500),
+          onPressed: _saveEmergencyContact,
+        ),
+        const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            '📡 HEARTBEAT DE TELEMETRÍA (BEACON)',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+          ),
+          subtitle: const Text(
+            'Publica la posición periódicamente. La base detecta pérdida del operador si el latido cesa.',
+            style: TextStyle(fontSize: 10, color: Colors.white54),
+          ),
+          value: _heartbeatEnabled,
+          activeTrackColor: const Color(0xFF00E5FF),
+          onChanged: (value) async {
+            setState(() => _heartbeatEnabled = value);
+            await EmergencyService.setHeartbeatEnabled(value);
+          },
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _heartbeatIntervalController,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: InputDecoration(
+                  labelText: 'INTERVALO HEARTBEAT (min)',
+                  labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+                  filled: true,
+                  fillColor: const Color(0xFF141824),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: _applyHeartbeatInterval,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                  foregroundColor: const Color(0xFF00E5FF),
+                  side: const BorderSide(color: Color(0xFF00E5FF)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                icon: const Icon(Icons.timer, size: 16),
+                label: const Text('APLICAR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _duressController,
+                obscureText: true,
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: InputDecoration(
+                  labelText: _hasDuressCode ? '🔐 CÓDIGO DE COACCIÓN (configurado)' : '🔐 CÓDIGO DE COACCIÓN (PIN falso)',
+                  labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+                  hintText: 'Si te obligan: este PIN entra y dispara SOS silencioso',
+                  hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+                  filled: true,
+                  fillColor: const Color(0xFF141824),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: _applyDuressCode,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFBF5AF2).withOpacity(0.2),
+                foregroundColor: const Color(0xFFBF5AF2),
+                side: const BorderSide(color: Color(0xFFBF5AF2)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              icon: const Icon(Icons.lock, size: 16),
+              label: const Text('SETEAR', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+            ),
+          ],
+        ),
+        if (_hasDuressCode) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _clearDuressCode,
+              child: const Text(
+                'Eliminar código de coacción',
+                style: TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace'),
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
 
         const SettingsSectionTitle('🧹 LIMPIEZA DE MEMORIA LOCAL'),
@@ -762,7 +1016,6 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
       title: 'CIBERATAQUE DETECTADO (PRUEBA)',
       body: 'Notificación de alerta táctica recibida con éxito en la barra de estado de Android.',
       level: 'CRÍTICA',
-      showFloatingOverlay: false,
     );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -773,35 +1026,13 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     );
   }
 
-  Future<void> _testFloatingBubble() async {
-    await NotificationService.showFloatingBubble(
-      title: 'INCIDENTE CRÍTICO OSINT',
-      body: 'Superposición táctica activada sobre el sistema Android. Toca CERRAR HUD para ocultar.',
-      level: 'DEFCON 2',
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('🫧 Ventana / HUD flotante activada sobre pantalla.'),
-        backgroundColor: Color(0xFF00FFAA),
-      ),
-    );
-  }
-
   Future<void> _testGeofence() async {
     final pos = await GpsService.getCurrentPosition();
     if (pos != null) {
-      await GpsService.evaluateGeofenceAlert(
-        eventLat: pos.latitude + 0.01,
-        eventLon: pos.longitude + 0.01,
-        title: 'INCIDENTE DE PROXIMIDAD (PRUEBA)',
-        level: 'CRÍTICA',
-        radiusKm: 15.0,
-      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🛰️ GPS Activo: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}. Geocerca verificada.'),
+          content: Text('🛰️ GPS Activo: ${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}. Sensor operativo.'),
           backgroundColor: const Color(0xFF00FFAA),
         ),
       );
@@ -814,6 +1045,10 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         ),
       );
     }
+  }
+
+  void _openGeofenceManager() {
+    showGeofenceManager(context);
   }
 
   Future<void> _testVoice() async {
@@ -850,25 +1085,22 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   }
 
   Future<void> _testTacticalCamera() async {
-    final pos = await GpsService.getCurrentPosition();
-    final lat = pos?.latitude ?? 10.4806;
-    final lon = pos?.longitude ?? -66.9036;
-
-    final photo = await TacticalCameraService.captureTelemetryPhoto(
-      lat: lat,
-      lon: lon,
+    final result = await TacticalCameraService.captureTelemetryPhoto(
+      telemetry: GpsService.lastSnapshot,
       classification: 'CONFIDENCIAL // OPERADOR C4I',
     );
 
     if (!mounted) return;
+    final String shaPrefix = (result?['sha256'] as String? ?? '');
+    final String hashShort = shaPrefix.length > 8 ? shaPrefix.substring(0, 8) : shaPrefix;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          photo != null
-              ? '📷 Fotografía estampada con telemetría GPS [$lat, $lon].'
+          result != null
+              ? '📷 Fotografía estampada con telemetría y SHA256 $hashShort.'
               : '⚠️ No se pudo inicializar la cámara o permiso denegado.',
         ),
-        backgroundColor: photo != null ? const Color(0xFF00E5FF) : const Color(0xFFFF2D55),
+        backgroundColor: result != null ? const Color(0xFF00E5FF) : const Color(0xFFFF2D55),
       ),
     );
   }
@@ -898,16 +1130,133 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
 
   void _toggleDeadManSwitch() {
     final service = DeadManSwitchService();
-    if (service.isActive) {
-      service.stopMonitoring();
-    } else {
-      service.startMonitoring();
-    }
+    final nowActive = !service.isActive;
+    service.setEnabled(nowActive);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(service.isActive ? '🚨 MONITOR HOMBRE MUERTO ACTIVADO (Detección de Caídas).' : '⏸️ Monitor de hombre muerto pausado.'),
-        backgroundColor: service.isActive ? const Color(0xFFFF9500) : const Color(0xFF8E8E93),
+        content: Text(
+          nowActive
+              ? '🚨 MONITOR HOMBRE MUERTO ACTIVADO (Caídas + Inmovilización).'
+              : '⏸️ Monitor de hombre muerto pausado.',
+        ),
+        backgroundColor: nowActive ? const Color(0xFFFF9500) : const Color(0xFF8E8E93),
+      ),
+    );
+  }
+
+  Future<void> _applyDeadManCalibration() async {
+    final service = DeadManSwitchService();
+
+    final double? impact = double.tryParse(_impactThresholdController.text.trim());
+    final int? immob = int.tryParse(_immobilizedController.text.trim());
+
+    if (impact == null || impact <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Umbral de impacto inválido (debe ser > 0 m/s²).'),
+          backgroundColor: Color(0xFFFF2D55),
+        ),
+      );
+      return;
+    }
+    if (immob == null || immob < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Ventana de inmovilización inválida (debe ser ≥ 1 min).'),
+          backgroundColor: Color(0xFFFF2D55),
+        ),
+      );
+      return;
+    }
+
+    await service.setImpactThreshold(impact);
+    await service.setImmobilizedMinutes(immob);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ Calibración aplicada: impacto > 0 m/s² e inmovilidad persistida.'),
+        backgroundColor: Color(0xFF00FFAA),
+      ),
+    );
+  }
+
+  Future<void> _saveEmergencyContact() async {
+    final phone = _emergencyContactController.text.trim();
+    await EmergencyService.setContactPhone(phone);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(phone.isNotEmpty
+            ? '✅ Contacto de emergencia guardado: $phone.'
+            : 'ℹ️ Contacto de emergencia vacío (escalada SMS/llamada desactivada).'),
+        backgroundColor: phone.isNotEmpty ? const Color(0xFF00FFAA) : const Color(0xFF8E8E93),
+      ),
+    );
+  }
+
+  Future<void> _applyHeartbeatInterval() async {
+    final minutes = int.tryParse(_heartbeatIntervalController.text.trim());
+    if (minutes == null || minutes < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Intervalo de heartbeat inválido (debe ser ≥ 1 min).'),
+          backgroundColor: Color(0xFFFF2D55),
+        ),
+      );
+      return;
+    }
+    await EmergencyService.setHeartbeatMinutes(minutes);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ Intervalo de heartbeat actualizado.'),
+        backgroundColor: Color(0xFF00FFAA),
+      ),
+    );
+  }
+
+  Future<void> _applyDuressCode() async {
+    final code = _duressController.text;
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Ingrese el código de coacción a configurar.'),
+          backgroundColor: Color(0xFFFF2D55),
+        ),
+      );
+      return;
+    }
+    final ok = await LocalAuthService.setDuressCode(code);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Código de coacción demasiado corto (mínimo 4 caracteres).'),
+          backgroundColor: Color(0xFFFF2D55),
+        ),
+      );
+      return;
+    }
+    _duressController.clear();
+    setState(() => _hasDuressCode = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🔐 Código de coacción configurado. Usarlo en el login dispara SOS silencioso.'),
+        backgroundColor: Color(0xFFBF5AF2),
+      ),
+    );
+  }
+
+  Future<void> _clearDuressCode() async {
+    await LocalAuthService.clearDuressCode();
+    if (!mounted) return;
+    setState(() => _hasDuressCode = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('ℹ️ Código de coacción eliminado.'),
+        backgroundColor: Color(0xFF8E8E93),
       ),
     );
   }

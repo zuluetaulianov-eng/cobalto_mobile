@@ -74,6 +74,7 @@ const String kMapHtmlContent = '''
 
     var markersGroup = L.layerGroup().addTo(map);
     var pulsesGroup = L.layerGroup().addTo(map);
+    var geofenceGroup = L.layerGroup().addTo(map);
     var currentFilter = 'ALL';
 
     var allPoints = [];
@@ -152,6 +153,26 @@ const String kMapHtmlContent = '''
         allPoints = newPoints;
         filterPoints(currentFilter);
       }
+    }
+
+    function updateGeofences(zones) {
+      geofenceGroup.clearLayers();
+      if (!Array.isArray(zones)) return;
+      zones.forEach(function(z) {
+        var zoneColor = z.threatLevel === 'CRÍTICA' ? '#FF2D55'
+          : z.threatLevel === 'ALTA' ? '#FF9500'
+          : '#00E5FF';
+        var circle = L.circle([z.lat, z.lng], {
+          radius: z.radiusKm * 1000,
+          color: zoneColor,
+          weight: 2,
+          dashArray: '6 4',
+          fillColor: zoneColor,
+          fillOpacity: 0.12,
+          interactive: false
+        });
+        geofenceGroup.addLayer(circle);
+      });
     }
   </script>
 </body>

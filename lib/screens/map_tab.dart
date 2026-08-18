@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../config/map_html_content.dart';
 import '../services/app_logger.dart';
+import '../services/geofence_service.dart';
 import '../services/gps_service.dart';
 import '../services/map_points_service.dart';
 import '../widgets/map_marker_details_sheet.dart';
@@ -114,6 +115,22 @@ class _MapTabState extends State<MapTab> {
     setState(() => _isRefreshing = true);
 
     final dynamicPoints = await MapPointsService.buildDynamicPoints();
+
+    // Dibujar las geocercas tácticas activas sobre el mapa Leaflet
+    final zones = await GeofenceService.getZones();
+    if (zones.isNotEmpty) {
+      final zonesJson = json.encode(
+        zones.map((z) => {
+          'lat': z.lat,
+          'lng': z.lng,
+          'radiusKm': z.radiusKm,
+          'threatLevel': z.threatLevel,
+        }).toList(),
+      );
+      await _controller.runJavaScript('updateGeofences($zonesJson);');
+    } else {
+      await _controller.runJavaScript('updateGeofences([]);');
+    }
 
     // Actualizar contadores
     final newCounts = MapPointsService.computeLayerCounts(dynamicPoints);

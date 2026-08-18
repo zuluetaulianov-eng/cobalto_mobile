@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../services/cobalto_api_service.dart';
+import '../services/dead_man_switch_service.dart';
+import '../services/emergency_service.dart';
+import '../services/geofence_service.dart';
+import '../services/telemetry_sync_service.dart';
 import 'login_screen.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,6 +76,30 @@ class _BootScreenState extends State<BootScreen> with SingleTickerProviderStateM
     await Future.delayed(const Duration(milliseconds: 400));
     _addLog('[+] INICIALIZANDO MÓDULOS DE INTELIGENCIA Y TELEMETRÍA...');
     await Future.delayed(const Duration(milliseconds: 400));
+
+    // Reactivar monitoreo de geocercas si estaba activado previamente.
+    final geoMonitoring = await GeofenceService.isMonitoringEnabled();
+    if (geoMonitoring) {
+      final interval = await GeofenceService.getMonitoringIntervalSeconds();
+      _addLog('[+] GEOCERCAS: MONITOREO TÁCTICO REACTIVADO (${interval}s).');
+      GeofenceService.startMonitoring(intervalSeconds: interval);
+    }
+
+    // Reactivar el Monitor de Hombre Muerto/Inmovilizado si estaba activado.
+    await DeadManSwitchService().initFromPrefs();
+    if (DeadManSwitchService().isActive) {
+      _addLog('[+] HOMBRE MUERTO: VIGILANCIA TÁCTICA REACTIVADA.');
+    }
+
+    // Configuración del plan de emergencia (contacto y heartbeat beacon).
+    await EmergencyService().initFromPrefs();
+    if (EmergencyService.isHeartbeatRunning) {
+      _addLog('[+] HEARTBEAT: TRANSMISIÓN DE TELEMETRÍA ACTIVA.');
+    }
+
+    // Reintenta subidas de evidencia fotográfica y señales SOS sin enlace.
+    await TelemetrySyncService.retryPending();
+    await TelemetrySyncService.retryPendingSos();
 
     // El login (local o contra servidor) siempre es la puerta de entrada.
     if (mounted) {

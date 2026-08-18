@@ -63,4 +63,30 @@ class SettingsPersistenceService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('cached_sitrep_news');
   }
+
+  /// Anuncio por voz (TTS) de las notificaciones de alerta CRÍTICA/ALTA.
+  static const String _voiceAnnounceKey = 'voice_announce_alerts';
+
+  static Future<bool> isVoiceAnnounceEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_voiceAnnounceKey) ?? false;
+  }
+
+  static Future<void> saveVoiceAnnounceEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_voiceAnnounceKey, enabled);
+  }
+
+  /// Modo silencio (mute táctico): suprime toda lectura por voz.
+  static const String _silentModeKey = 'voice_silent_mode';
+
+  static Future<bool> isSilentModeEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_silentModeKey) ?? false;
+  }
+
+  static Future<void> saveSilentModeEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_silentModeKey, enabled);
+  }
 }

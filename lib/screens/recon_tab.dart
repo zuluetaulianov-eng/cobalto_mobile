@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../services/gps_service.dart';
 import '../services/tactical_camera_service.dart';
 import '../services/tactical_ocr_service.dart';
+import 'tactical_camera_screen.dart';
 
 class ReconTab extends StatefulWidget {
   const ReconTab({super.key});
@@ -69,24 +70,20 @@ class _ReconTabState extends State<ReconTab> {
           _errorMessage = 'Fallo al consultar la base de datos NVD CVE.';
         }
       } else if (_selectedTool == 'TAC_CAMERA') {
-        final pos = await GpsService.getCurrentPosition();
-        final double lat = pos?.latitude ?? 10.4806;
-        final double lon = pos?.longitude ?? -66.9036;
-
-        final photoPath = await TacticalCameraService.captureTelemetryPhoto(
-          lat: lat,
-          lon: lon,
+        final result = await TacticalCameraService.captureTelemetryPhoto(
+          telemetry: GpsService.lastSnapshot,
           classification: 'CONFIDENCIAL // COBALTO RECON',
         );
 
-        if (photoPath != null) {
-          _lastCapturedPhotoPath = photoPath;
+        if (result != null) {
+          _lastCapturedPhotoPath = result['imagePath'] as String?;
           _resultData = {
             'status': 'FOTOGRAFÍA CAPTURADA CON ÉXITO Y ESTAMPADA EN DISCO',
-            'latitude': lat,
-            'longitude': lon,
+            'sha256': result['sha256'],
             'zulu_timestamp': DateTime.now().toUtc().toIso8601String(),
-            'saved_path': photoPath,
+            'saved_path': result['imagePath'],
+            'sidecar_forense': result['sidecarPath'],
+            'report_id_local': result['reportId'],
             'security': 'CONFIDENCIAL // COBALTO C4I',
           };
         } else {
@@ -100,6 +97,26 @@ class _ReconTabState extends State<ReconTab> {
         setState(() => _isExecuting = false);
       }
     }
+  }
+
+  Future<void> _openHudCamera() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (_) => const TacticalCameraScreen()),
+    );
+    if (!mounted || result == null) return;
+
+    setState(() {
+      _lastCapturedPhotoPath = result['imagePath'] as String?;
+      _resultData = {
+        'status': 'EVIDENCIA CAPTURADA DESDE HUD TÁCTICO Y ESTAMPADA EN DISCO',
+        'sha256': result['sha256'],
+        'saved_path': result['imagePath'],
+        'sidecar_forense': result['sidecarPath'],
+        'report_id_local': result['reportId'],
+        'security': 'CONFIDENCIAL // COBALTO C4I',
+      };
+      _errorMessage = null;
+    });
   }
 
   @override
@@ -205,6 +222,26 @@ class _ReconTabState extends State<ReconTab> {
             ),
 
             const SizedBox(height: 16),
+            if (_selectedTool == 'TAC_CAMERA') ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _openHudCamera,
+                  icon: const Icon(Icons.center_focus_strong, size: 16),
+                  label: const Text(
+                    '📷 ABRIR CÁMARA TÁCTICA (HUD LIVE GPS)',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00E5FF).withOpacity(0.15),
+                    foregroundColor: const Color(0xFF00E5FF),
+                    side: const BorderSide(color: Color(0xFF00E5FF)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             const Text(
               'RESULTADOS DE INTELIGENCIA:',
               style: TextStyle(color: Colors.white54, fontSize: 10, fontFamily: 'monospace'),

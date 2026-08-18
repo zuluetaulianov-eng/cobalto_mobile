@@ -271,6 +271,26 @@ class CobaltoApiService {
     }
   }
 
+  /// Publica el latido de telemetría (beacon) del operador al nodo central.
+  /// La base puede detectar pérdida del operador si deja de recibir latidos.
+  static Future<Map<String, dynamic>> sendHeartbeat(Map<String, dynamic> heartbeatData) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/api/sos'),
+            headers: _headers,
+            body: json.encode(heartbeatData),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true};
+      }
+      return {'success': false, 'error': 'Heartbeat rechazado (HTTP ${response.statusCode}).'};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   static Future<Map<String, dynamic>> fetchPredictiveScore() async {
     try {
       final response = await _client

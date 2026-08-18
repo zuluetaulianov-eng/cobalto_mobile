@@ -8,7 +8,7 @@ import 'crypto_vault_service.dart';
 class LocalDbService {
   static Database? _database;
   static const String _dbName = 'cobalto_edge.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 3;
 
   static Future<Database> get database async {
     if (_database != null) return _database!;
@@ -65,6 +65,56 @@ class LocalDbService {
             synced INTEGER DEFAULT 0
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE geofences (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            lat REAL NOT NULL,
+            lng REAL NOT NULL,
+            radius_km REAL NOT NULL,
+            threat_level TEXT NOT NULL,
+            is_base INTEGER DEFAULT 0,
+            active INTEGER DEFAULT 1,
+            timestamp TEXT NOT NULL
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE emergency_log (
+            id TEXT PRIMARY KEY,
+            event TEXT NOT NULL,
+            data TEXT,
+            timestamp TEXT NOT NULL
+          )
+        ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS geofences (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              lat REAL NOT NULL,
+              lng REAL NOT NULL,
+              radius_km REAL NOT NULL,
+              threat_level TEXT NOT NULL,
+              is_base INTEGER DEFAULT 0,
+              active INTEGER DEFAULT 1,
+              timestamp TEXT NOT NULL
+            )
+          ''');
+        }
+        if (oldVersion < 3) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS emergency_log (
+              id TEXT PRIMARY KEY,
+              event TEXT NOT NULL,
+              data TEXT,
+              timestamp TEXT NOT NULL
+            )
+          ''');
+        }
       },
     );
   }
@@ -240,6 +290,46 @@ class LocalDbService {
   }
 
   // ── MANTENIMIENTO ──
+
+  /// Registra un evento en el timeline de emergencia (cadena de custodia).
+  static Future<void> logEmergencyEvent(String event, {Map<String, dynamic>? data}) async {
+    try {
+      final db = await database;
+      await db.insert(
+        'emergency_log',
+        {
+          'id': 'el_${DateTime.now().microsecondsSinceEpoch}',
+          'event': event,
+          'data': data != null ? json.encode(data) : '',
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+      );
+    } catch (e) {
+      AppLogger.warn('Fallo el registro del timeline de emergencia.', tag: 'Emergency', error: e);
+    }
+  }
+
+  /// Recupera el timeline de emergencia en orden cronológico descendente.
+  static Future<List<Map<String, dynamic>>> getEmergencyLog({int limit = 200}) async {
+    try {
+      final db = await database;
+      final maps = await db.query('emergency_log', orderBy: 'timestamp DESC', limit: limit);
+      return maps.map((m) {
+        final Map<String, dynamic> mutable = Map<String, dynamic>.from(m);
+        if (mutable['data'] != null && (mutable['data'] as String).isNotEmpty) {
+          try {
+            mutable['data'] = json.decode(mutable['data'] as String);
+          } catch (e) {
+            // Se deja como texto si no es JSON válido
+          }
+        }
+        return mutable;
+      }).toList();
+    } catch (e) {
+      AppLogger.warn('Fallo la lectura del timeline de emergencia.', tag: 'Emergency', error: e);
+      return [];
+    }
+  }
 
   static Future<void> purgeOldData({int maxDays = 30}) async {
     try {

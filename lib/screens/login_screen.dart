@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../services/cobalto_api_service.dart';
+import '../services/emergency_service.dart';
 import '../services/local_auth_service.dart';
 import 'main_screen.dart';
 
@@ -100,11 +103,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       // Verificar contra la cuenta local primero (funciona offline).
       final localOk = await LocalAuthService.verifyLogin(user, pass);
       if (!localOk) {
-        setState(() {
-          _isLoggingIn = false;
-          _errorMsg = 'Credenciales incorrectas. Verifique usuario y contraseña.';
-        });
-        return;
+        // Posible coacción: si coincide con el código de coacción, la app
+        // ingresa con apariencia normal pero dispara un SOS silencioso.
+        final isDuress = await LocalAuthService.hasDuressCode() &&
+            await LocalAuthService.verifyDuress(pass);
+        if (isDuress) {
+          unawaited(EmergencyService().triggerDuress());
+          setState(() {
+            _isLoggingIn = false;
+            _errorMsg = '';
+          });
+        } else {
+          setState(() {
+            _isLoggingIn = false;
+            _errorMsg = 'Credenciales incorrectas. Verifique usuario y contraseña.';
+          });
+          return;
+        }
       }
     }
 

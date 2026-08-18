@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:system_alert_window/system_alert_window.dart';
+
+import 'settings_persistence_service.dart';
+import 'voice_service.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -57,7 +61,6 @@ class NotificationService {
     required String body,
     String level = 'ALTA',
     String? deduplicationKey,
-    bool showFloatingOverlay = false,
   }) async {
     await init();
 
@@ -114,9 +117,10 @@ class NotificationService {
         payload: 'alert_tap',
       );
 
-      // Si es una alerta crítica y la sobreposición está activada, mostrar burbuja flotante en pantalla
-      if (showFloatingOverlay && (level.contains('CRÍTICA') || level.contains('ALTA'))) {
-        await showFloatingBubble(title: title, body: body, level: level);
+      // Anuncio por voz (TTS) de alertas CRÍTICA/ALTA si está activado en Ajustes.
+      final bool announceByVoice = await SettingsPersistenceService.isVoiceAnnounceEnabled();
+      if (announceByVoice && (level.contains('CRÍTICA') || level.contains('ALTA'))) {
+        unawaited(VoiceService.speakAlert(title: title, body: body, level: level));
       }
     } catch (e) {
       debugPrint('⚠️ Error al mostrar notificación táctica: $e');
@@ -154,46 +158,6 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('⚠️ Error al mostrar notificación general: $e');
-    }
-  }
-
-  /// Muestra una burbuja/ventana flotante de superposición sobre cualquier otra app
-  static Future<void> showFloatingBubble({
-    required String title,
-    required String body,
-    String level = 'CRÍTICA',
-  }) async {
-    try {
-      bool isGranted = await SystemAlertWindow.checkPermissions(prefMode: SystemWindowPrefMode.OVERLAY) ?? false;
-      if (!isGranted) {
-        await SystemAlertWindow.requestPermissions(prefMode: SystemWindowPrefMode.OVERLAY);
-        isGranted = await SystemAlertWindow.checkPermissions(prefMode: SystemWindowPrefMode.OVERLAY) ?? false;
-      }
-
-      if (isGranted) {
-        // Cerrar cualquier ventana overlay previa antes de abrir una nueva,
-        // para evitar apilamiento de ventanas de sistema que puede colapsar el equipo.
-        try {
-          await SystemAlertWindow.closeSystemWindow(prefMode: SystemWindowPrefMode.OVERLAY);
-        } catch (_) {}
-        await SystemAlertWindow.showSystemWindow(
-          notificationTitle: '🚨 [$level] COBALTO OSINT',
-          notificationBody: '$title\n$body',
-          gravity: SystemWindowGravity.TOP,
-          prefMode: SystemWindowPrefMode.OVERLAY,
-        );
-      }
-    } catch (e) {
-      debugPrint('⚠️ Error al mostrar burbuja flotante: $e');
-    }
-  }
-
-  /// Cierra la ventana flotante de superposición
-  static Future<void> closeFloatingBubble() async {
-    try {
-      await SystemAlertWindow.closeSystemWindow(prefMode: SystemWindowPrefMode.OVERLAY);
-    } catch (e) {
-      debugPrint('⚠️ Error al cerrar burbuja flotante: $e');
     }
   }
 }

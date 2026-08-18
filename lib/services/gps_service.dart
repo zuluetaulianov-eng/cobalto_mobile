@@ -80,7 +80,7 @@ class GpsService {
         body: alertBody,
         level: level,
         deduplicationKey: 'geofence|$eventLat|$eventLon|$title',
-        showFloatingOverlay: true,
+        showFloatingOverlay: false,
       );
     }
   }

@@ -57,7 +57,7 @@ class NotificationService {
     required String body,
     String level = 'ALTA',
     String? deduplicationKey,
-    bool showFloatingOverlay = true,
+    bool showFloatingOverlay = false,
   }) async {
     await init();
 
@@ -171,6 +171,11 @@ class NotificationService {
       }
 
       if (isGranted) {
+        // Cerrar cualquier ventana overlay previa antes de abrir una nueva,
+        // para evitar apilamiento de ventanas de sistema que puede colapsar el equipo.
+        try {
+          await SystemAlertWindow.closeSystemWindow(prefMode: SystemWindowPrefMode.OVERLAY);
+        } catch (_) {}
         await SystemAlertWindow.showSystemWindow(
           notificationTitle: '🚨 [$level] COBALTO OSINT',
           notificationBody: '$title\n$body',

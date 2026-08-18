@@ -6,6 +6,9 @@ import 'app_logger.dart';
 import 'local_db_service.dart';
 
 class LocalExtractorService {
+  static bool _hasActiveExtraction = false;
+  static const Duration _requestTimeout = Duration(seconds: 8);
+
   static const List<Map<String, String>> defaultRssSources = [
     // Internacional & Geopolítica
     {'name': 'BBC Mundo', 'url': 'https://feeds.bbci.co.uk/mundo/rss.xml'},
@@ -102,6 +105,22 @@ class LocalExtractorService {
   }
 
   static Future<List<Map<String, dynamic>>> extractDirectlyOnDevice() async {
+    // Preventivo anti-colapso: si ya hay una extracción en curso, no lanzar
+    // otra en paralelo (múltiples tabs disparan esto al arrancar la app).
+    if (_hasActiveExtraction) {
+      AppLogger.info('Extracción directa ya en curso; se omite esta llamada concurrente.', tag: 'Extractor');
+      return _fallbackFromCache();
+    }
+    _hasActiveExtraction = true;
+
+    try {
+      return await _runExtraction();
+    } finally {
+      _hasActiveExtraction = false;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> _runExtraction() async {
     final List<Map<String, dynamic>> extracted = [];
     final sources = await getActiveSources();
     final keywords = await getLocalKeywords();
@@ -118,7 +137,7 @@ class LocalExtractorService {
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.0',
             },
-          ).timeout(const Duration(seconds: 8));
+          ).timeout(_requestTimeout);
 
           if (response.statusCode == 200) {
             final items = _parseRssXml(response.body, src['name']!, keywords);
@@ -136,9 +155,29 @@ class LocalExtractorService {
 
       // Guardar en la base de datos local SQLite (cobalto_edge.db) + SharedPreferences fallback
       await LocalDbService.insertEntries(extracted);
+
+      // Respaldar caché en prefs actualizada tras extraer
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('cached_sitrep_news', json.encode(extracted));
     }
 
     return extracted;
+  }
+
+  static Future<List<Map<String, dynamic>>> _fallbackFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedStr = prefs.getString('cached_sitrep_news');
+      if (cachedStr != null && cachedStr.isNotEmpty) {
+        final decoded = json.decode(cachedStr);
+        if (decoded is List) {
+          return List<Map<String, dynamic>>.from(decoded);
+        }
+      }
+    } catch (e) {
+      AppLogger.warn('Caché sitrep no disponible como respaldo.', tag: 'Extractor', error: e);
+    }
+    return const [];
   }
 
   static Future<List<Map<String, dynamic>>> _scrapeTelegramChannel(String url, String sourceName, List<String> keywords) async {

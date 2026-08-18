@@ -73,7 +73,7 @@ class DeadManSwitchService extends ChangeNotifier {
       body: 'Respuesta automática de emergencia en ${emergencyCountdownSeconds}s. Cancele si está consciente.',
       level: 'CRÍTICA',
       deduplicationKey: 'deadman|countdown',
-      showFloatingOverlay: true,
+      showFloatingOverlay: false,
     );
 
     _countdownTimer?.cancel();
@@ -111,7 +111,7 @@ class DeadManSwitchService extends ChangeNotifier {
           '${position != null ? '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}' : 'no disponibles'}.',
       level: 'CRÍTICA',
       deduplicationKey: 'deadman|sos',
-      showFloatingOverlay: true,
+      showFloatingOverlay: false,
     );
 
     // Registro local cifrado (reporte de campo CRITICAL) para disponibilidad offline.

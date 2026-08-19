@@ -13,6 +13,10 @@ class NotificationService {
   static bool _isInitialized = false;
   static final Set<String> _sentAlertKeys = {};
 
+  /// Callback de acciones de notificación (configurado al arrancar desde
+  /// main.dart). Evita dependencias circulares con servicios AEGIS.
+  static Future<void> Function()? onCheckInAction;
+
   /// Inicializa el servicio de notificaciones locales de sistema
   static Future<void> init() async {
     if (_isInitialized) return;
@@ -36,7 +40,10 @@ class NotificationService {
       await _notificationsPlugin.initialize(
         settings: initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
-          debugPrint('Notificación interactuada: ${response.payload}');
+          debugPrint('Notificación interactuada: action=${response.actionId} payload=${response.payload}');
+          if (response.actionId == 'checkin_safe') {
+            unawaited(onCheckInAction?.call());
+          }
         },
       );
 
@@ -158,6 +165,47 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('⚠️ Error al mostrar notificación general: $e');
+    }
+  }
+
+  /// Notificación PERSISTENTE de Check-In "Estoy a salvo" (recuperación).
+  /// Se muestra tras resolver una emergencia, o desde el panel de prueba,
+  /// con una acción de confirmación que dispara [onCheckInAction].
+  static Future<void> showCheckInNotification() async {
+    await init();
+
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'cobalto_checkin',
+      'COBALTO - Check-In de Supervivencia',
+      channelDescription: 'Confirmacion de estado "Estoy a salvo" post-emergencia',
+      importance: Importance.high,
+      priority: Priority.high,
+      ongoing: true,
+      autoCancel: false,
+      icon: '@mipmap/ic_launcher',
+      actions: <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          'checkin_safe',
+          'ESTOY A SALVO',
+          showsUserInterface: false,
+        ),
+      ],
+    );
+
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidDetails,
+    );
+
+    try {
+      await _notificationsPlugin.show(
+        id: 4242,
+        title: '🛡️ COBALTO AEGIS',
+        body: '¿Estás a salvo? Confirma para notificar a tu contacto de emergencia.',
+        notificationDetails: notificationDetails,
+        payload: 'checkin',
+      );
+    } catch (e) {
+      debugPrint('⚠️ Error al mostrar notificación de check-in: $e');
     }
   }
 }

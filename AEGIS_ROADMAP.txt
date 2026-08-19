@@ -1,0 +1,329 @@
+================================================================
+ COBALTO MOBILE - PLAN AEGIS (vNEXT)
+ Documento vivo de planificacion - NO es especificacion cerrada
+ Fecha de creacion: 2026-08-18
+ Estado: EN EVALUACION (aun NO se modifica codigo)
+================================================================
+
+INDICE
+  1. Objetivo general
+  2. Nucleo positivo que NO se toca (preservar)
+  3. Principios de arquitectura
+  4. Mapa de lo ya implementado (se reutiliza tal cual)
+  5. Roadmap por fases (1-6) con entregables
+  6. Decisiones tecnicas consolidadas (mesh / cripto / CRDT)
+  7. Pendientes de evaluacion antes de codificar
+  8. Criterios de aceptacion y verificacion
+  9. Riesgos y supuestos
+
+--------------------------------------------------------------
+ 1. OBJETIVO GENERAL
+--------------------------------------------------------------
+Integrar el Sistema de Emergencias AEGIS como CAPA sobre la
+plataforma COBALTO MOBILE existente, sin reescritura del nucleo.
+AEGIS actua en tres fases temporales:
+
+  ANTES   (Prevencion): geocercas de riesgo, kit de emergencia,
+          alerta temprana sismica (sensores globales).
+  DURANTE (Supervivencia): pánico 0-clic, caja negra, baliza de
+          rescate morse, red mesh offline de emergencia.
+  DESPUES (Recuperacion): check-in "Estoy a salvo", mapa
+          colaborativo de supervivencia (CRDT), triaje de
+          primeros auxilios asistido (offline).
+
+--------------------------------------------------------------
+ 2. NUCLEO POSITIVO QUE NO SE TOCA (PRESERVAR)
+--------------------------------------------------------------
+  [x] Extraccion de noticias on-device (RSS + Telegram scraping):
+      local_extractor_service.dart / sitrep_feed_service.dart.
+  [x] Telemetria GPS compartida: GpsService.telemetry (ValueNotifier)
+      - AEGIS CONSUME, no duplica.
+  [x] Seguridad: boveda AES-256-GCM (CryptoVaultService ENCv2:),
+      auth local offline + coaccion (LocalAuthService).
+  [x] Colas offline de reintento: telemetry_sync_service.dart
+      (fotos y senales SOS sin enlace).
+  [x] Mapa Leaflet (map_tab + map_points_service), OCR, camara HUD,
+      widget nativo, NVG, isolates, gestion de poder y ciclo de vida.
+  [x] Sistema de emergencias actual (boton pánico retencion 3s,
+      coaccion, heartbeat, sirena/estrobo, dead-man). Se EXTENDERA,
+      no se reemplaza.
+
+--------------------------------------------------------------
+ 3. PRINCIPIOS DE ARQUITECTURA
+--------------------------------------------------------------
+  - Aegis es una capa orquestada por EmergencyService (ya singleton
+    ChangeNotifier). Servicios nuevos en lib/services/aegis_*.
+  - Todo lo nuevo es offline-first: nunca depende del servidor.
+  - El mesh relay NUNCA ve el contenido: nodos intermedios = 
+    enrutadores ciegos (E2EE antes de reenviar).
+  - No se introducen frameworks CRDT: se simulan con SQLite
+    (registro inmutable + HLC + tombstones + UPSERT LWW).
+  - Cada capa de riesgo high se aisla al final del pipeline para
+    poder testear el resto puro Dart (unit tests sin hardware).
+
+--------------------------------------------------------------
+ 4. MAPA DE LO YA IMPLEMENTADO (REUTILIZAR)
+--------------------------------------------------------------
+  ANTES:
+    - Geocercas de riesgo ............ geofence_service.dart (OK)
+    - Monitoreo base/perimetro ....... geofence_service.dart (OK)
+  DURANTE:
+    - Pánico manual 3s ................ emergency_service.dart
+    - Duress login .................... local_auth_service / triggerDuress
+    - Heartbeat beacon ................ emergency_service.dart
+    - Sirena + estrobo + haptico ....... emergency_alarm_screen.dart
+    - Dead-man (caida/inmobil/arrastre). dead_man_switch_service.dart
+    - Foto de contexto ............... tactical_camera_service.dart
+    - Cola SOS offline ............... telemetry_sync_service.dart
+  DESPUES:
+    - Capa de marcadores del mapa ..... map_points_service.dart
+    - Reportes de campo cifrados ...... field_reports / vault
+  --- (La integracion de cada fase reusa estos artefactos) ---
+
+--------------------------------------------------------------
+ 5. ROADMAP POR FASES (ENTREGABLES)
+--------------------------------------------------------------
+  FASE 1 - QUICK WINS (impacto/esfuerzo alto, riesgo bajo)
+    [x] Baliza de rescate MORSE real: patron SOS con flash
+        linterna (reemplaza el strobe simple actual).
+    [x] Check-In "Estoy a salvo" desde lockscreen/via
+        notificacion persistente con accion + widget.
+    [x] Kit de emergencia: inventario + recordatorio cada 6 meses
+        (fecha en prefs + notificacion local).
+    [x] Perfil de sobreviviente: tipo de sangre, alergias,
+        condiciones medicas (nueva tabla cifrada con vault).
+    [x] TacticalSnapshot + batteryLevel (nueva dep: battery_plus)
+        para el paquete de caja negra.
+
+  FASE 2 - ALERTA TEMPRANA (sensores globales)
+    [x] Fetch directo USGS (fallback si fetchRealtime no responde).
+    [x] Algoritmo P/S: distancia epicentro -> alerta anticipada.
+    [x] Sirena intrusiva LOCAL (sin servidor) con nivel/escala.
+    [x] Geocercas de alerta sismica automaticas (radio 200 km, dedup
+        por id evento, def-MAG 4.0). GEOcerca METEOROLOGICA pendiente
+        de esquema del hub (fires/FIRMS sin coords en fetchRealtime).
+
+  FASE 3 - CAJA NEGRA (escalable, sin grabacion de audio v1)
+    [ ] Fotos silenciosas continuas de contexto.
+    [ ] Paquete cifrado AEGIS: battery + GPS + altitud + sangre
+        -> cola de reintento (reutiliza TelemetrySyncService).
+    [ ] Grabacion de audio background: APLAZADA (permisos
+        Android 14+ mediante VisualMediaProjection). Bugtracker.
+
+  FASE 4 - RECUPERACION
+    [ ] Mapa colaborativo de supervivencia (POIs):
+        hospital/agua/carretera bloqueada/escombros.
+        Capa nueva sobre map_points_service con LWW+CRDT.
+    [ ] Aceleracion espacial R-Tree: indice virtual + triggers
+        + consulta por bounding box del viewport Leaflet.
+        OPTIONAL (solo si la escala lo justifica; fallback a
+        indice compuesto (lat,lon) + scan por bbox).
+    [ ] Triaje de primeros auxilios offline: guias + TTS +
+        metronomo 100-120 BPM (Timer + FlutterTts).
+
+  FASE 5 - DISPARADORES HARDWARE
+    [ ] Pánico 0-clic MVP: Volumen DOWN x3 (KeyEvent), canal
+        nativo si hace falta. -> Boton de ENCENDIDO x5: DESCARTADO
+        (no accesible de forma fiable via SDK; AccessibilityService
+        fragil y matado por OEMs).
+    [ ] SMS real al contacto (permiso SEND_SMS) - actual solo abre
+        la app de SMS.
+
+  FASE 6 - RED MESH OFFLINE (en orden de implementacion)
+    [ ] 6a criptografia: PKI offline Ed25519/X25519 + E2EE AES-GCM
+        + identidad = hash(pubkey) + TOFU por QR. PURA DART.
+    [ ] 6a2 serializacion: esquema protobuf mesh_sync.proto
+        (package:protobuf + protoc-gen-dart) o empaquetado
+        binario manual. DECISION ABIERTA -> P11. PURA DART.
+    [ ] 6b gossip/CRDT: envelope(header claro + payload cifrado),
+        hash anti-bucles, TTL 15 saltos/24h, seen-table, deltas
+        por marcas de agua (HLC COMPLETO, nunca solo ms). PURA DART.
+    [ ] 6c persistencia cifrada: sqflite_sqlcipher + TTL cleanup.
+    [ ] 6d transporte: nearby_connections (STRATEGY_P2P_CLUSTER,
+        bytes-only) + FGS SPECIAL_USE + exencion de bateria.
+    [ ] 6e pruebas de campo: 3-5 nodos, bridge por nodo con
+        Internet a /api/sos.
+
+--------------------------------------------------------------
+ 6. DECISIONES TECNICAS CONSOLIDADAS
+--------------------------------------------------------------
+  RED MESH (FASE 6)
+    - No hay ad-hoc puro en Android (IBSS bloqueado sin root):
+      la topologia real es BLE discovery + Wi-Fi/P2P on-demand,
+      exactamente lo que abstrae Nearby Connections.
+    - Se usara el plugin nearby_connections (o canal Kotlin si el
+      plugin falla). Payloads bytes-only; fotos/audio NO se
+      retransmiten de nodo en nodo (se encolan, no se amplifican).
+    - Activacion del mesh por demanda (ahorro de bateria):
+      conectividad degradada | SOS activo/pendiente | modo manual.
+
+  CRIPTOGRAFIA (FASE 6)
+    - Claves: Ed25519 (firmas) + X25519 (ECDH) via paquete
+      cryptography (ya en pubspec). Semilla 32B cifrada con vault
+      ENCv2: en Secure Storage (no hardware Keystore: trade-off
+      aceptado por portabilidad Dart).
+    - ID de red = sha256(clave publica); anclaje de confianza por
+      huellas QR fuera de banda (TOFU). Sin CA central.
+    - Diseño dual de SOS:
+        * Dirigido a contacto conocido: E2EE real ECDH -> AES-GCM.
+          Ahi viajan sangre/GPS/coordenadas.
+        * Broadcast de rescate: firmado + cifrado a claves de
+          rescate fijadas por huella TOFU. NUNCA clave privada
+          embebida en la APK (seria extractible = no-E2EE).
+    - Padding por CUBOS de tamano (512B/2KB/8KB), no 64KB fijos:
+        mismos bytes de relleno rompe fingerprinting SIN amplificar
+        la carga en una malla BLE.
+    - Nodos intermedios = enrutadores ciegos: nunca descifran.
+
+  CRDT / SPLIT-BRAIN (FASE 4 y 6)
+    - Esquema base (tabla map_markers): id / type / lat / lon /
+      status / node_id / hlc / tombstone. PRIMARY KEY (id).
+    - HLC formato SIEMPRE con ancho fijo y padding a cero:
+            hlc = %013d-%03d-%s
+      (EJ: 1692384759000-001-NodoA)
+      - CRITICO: sin ancho fijo la comparacion lexicografica en
+        SQLite da resultados incorrectos y LWW convergiria mal.
+    - Regla LWW por fila via UPSERT:
+        INSERT ... ON CONFLICT(id) DO UPDATE SET ...
+        WHERE excluded.hlc > map_markers.hlc;
+    - DELETE prohibido. Eliminacion = tombstone=1 con HLC nuevo;
+      UI filtra WHERE tombstone=0; disco conserva lapidas.
+    - Tombstone inmortales: aceptado (escala de cientos/miles de
+      marcadores). GC solo con horizonte muy largo (>180 dias),
+      documentando riesgo de resurreccion de fantasmas.
+    - Saneo de reloj: rechazar/flaggear hlc_ms que exceda UTC+24h
+      del reloj local (previene clock poison). Log para diagnostico.
+    - Sincronizacion por deltas: intercambio de marcas de agua
+      (max HLC) -> SELECT * WHERE hlc > watermark del peer.
+      Fallback: peer sin BD -> watermark 0 = reesync completo.
+      Registrar watermark por peer para no re-syncar todo.
+      - CRITICO: el watermark compara el HLC COMPLETO
+        (ms+counter+node), NUNCA solo el ms: dos eventos en el
+        mismo milisegundo quedarian fuera del delta y el LWW
+        convergeria mal.
+    - Implementacion: batch/transaccion (reutilizar patron de
+      LocalDbService.insertEntries) sobre sqflite_sqlcipher.
+
+  INDICE ESPACIAL (R-TREE) - FASE 4 (acelerador opcional)
+    - CRITICO - STABILIDAD DE ROWID: map_markers debe usar
+      SIEMPRE "ON CONFLICT(id) DO UPDATE" (UPSERT-LWW). NUNCA
+      "INSERT OR REPLACE" (ConflictAlgorithm.replace): REPLACE
+      borra+reinserta y PUEDE cambiar el rowid, rompiendo el
+      mapeo del indice espacial y los triggers.
+    - Tabla virtual de solo coordenadas:
+        CREATE VIRTUAL TABLE map_index USING rtree(
+          id, minLon, maxLon, minLat, maxLat);
+      Para puntos simples min==max. id = rowid de map_markers
+      (enteros; los UUID de texto quedan fuera del arbol).
+    - Triggers para mantener el indice:
+        AFTER INSERT  WHEN new.tombstone = 0 -> insert.
+        AFTER UPDATE  -> DELETE old + INSERT condicional.
+      Optimizacion: guard WHEN old.lat != new.lat OR old.lon
+      != new.lon para no reindexar updates de status.
+    - Consulta por viewport (bbox de pantalla) + JOIN con
+      map_markers + filtro tombstone=0 / status='activo'.
+    - Refinamiento radial: R-Tree devuelve CUADRADO; filtrar el
+      circulo exacto con Haversine en capa Dart (ya existe
+      GpsService.calculateDistanceInKm) antes de notificar.
+    - RENDIMIENTO HONESTO: el R-Tree brilla con 10k+ marcadores.
+      Con cientos/pocos miles un indice normal (lat,lon) + bbox
+      scan es suficiente. Por eso es OPCIONAL y con fallback.
+    - El nucleo CRDT (map_markers) DEBE permanecer independiente
+      del R-Tree: el indice es una capa de vista/aceleracion;
+      asi el mesh y los unit tests no dependen de rtree.
+    - Complejidad ~O(log N) en caso tipico (no garantizado en el
+      peor caso de un R-Tree degradado).
+
+  SERIALIZACION / PROTOBUF (FASE 6)
+    - JSON/XML PROHIBIDOS en el transporte mesh (sobrecarga de
+      nombres de campos para BLE).
+    - Esquema mesh_sync.proto - todo binario:
+        * id = bytes 16B (UUID crudo, nunca string 36 chars).
+        * type = enum IncidentType (varint ~1 byte).
+        * lat/lon = sint32 e7 (precision ~1 cm). OJO: lat/lon*1e7
+          (~1.5e9) -> varint ~4-5 bytes, no 1; aun asi ahorra
+          3 bytes vs double(8B).
+        * hlc = uint64 timestamp + uint32 counter + bytes node_id
+          (el string %013d-%03d-%s se reconstruye SOLO si hace
+          falta la comparacion lexicografica).
+        * tombstone = bool.
+    - Implementacion REAL en Dart (el ejemplo Kotlin es solo
+      ilustrativo): package:protobuf + protoc-gen-dart (setup de
+      protoc en toolchain) O empaquetado manual con ByteData.
+      DECISION ABIERTA P11: protobuf gana por compatibilidad de
+      versiones (nodos viejos ignoran campos nuevos); manual gana
+      en simplicidad (cero dependencias, 2 mensajes fijos).
+    - Fragmentador a nivel GATT: NO NECESARIO en v1.
+      nearby_connections fragmenta/entrama payloads internamente
+      (bytes-only). Solo relevante si se usara BLE GATT crudo
+      como fallback (header de longitud + slicing + ack).
+    - Compresion: GZIP (dart:io GZipCodec) sobre el proto SOLO en
+      enlaces de alto ancho de banda (Wi-Fi Direct). En BLE de
+      paquetes pequenos la compresion añade overhead -> se omite.
+    - Firma determinista: al firmar con Ed25519 el serializado,
+      usar UNA sola generacion de clases Dart, sin maps ni campos
+      desconocidos, para que ambos extremos generen bytes
+      identicos (protobuf no tiene forma canonica por definicion).
+    - node_id del proto = hash(clave publica) (identidad ya
+      definida). NUNCA la MAC de BLE: rastreable y Android
+      randomiza MAC.
+
+--------------------------------------------------------------
+ 7. PENDIENTES DE EVALUACION ANTES DE CODIFICAR
+--------------------------------------------------------------
+  [ ] P1. Matriz de permisos Android por version (8.0 a 15) para
+           todos los nuevos sensores (BLE, Nearby, bateria, FGS).
+  [ ] P2. Presupuesto real de bateria del mesh (BLE discovery con
+           FGS constante) y politica de activacion por demanda.
+  [ ] P3. Estrategia de migracion de LocalDbService a
+           sqflite_sqlcipher (bump de version del esquema v4).
+  [ ] P4. Definicion del nodo con Internet: endpoints nuevos del
+           hub (/api/aegis/poi, /api/aegis/checkin, /api/sos).
+  [ ] P5. UX/firma visual de la capa AEGIS en pantalla de bloqueo
+           (widget home_widget vs notificacion con accion).
+  [ ] P6. Alcance del perfil de sobreviviente y su UI en Ajustes.
+  [ ] P7. Modelo de amenazas formal (adversario) de la malla.
+  [ ] P8. Plan de pruebas de campo (3-5 dispositivos, escenarios y
+           metricas de exito: latencia, tasa de entrega, bateria).
+  [ ] P9. (ESPACIO PARA NUEVAS EVALUACIONES DEL USUARIO)
+  [ ] P10. Probe de disponibilidad de R-Tree en runtime (try/catch
+           CREATE VIRTUAL TABLE) + fallback indice (lat,lon): la
+           extension no es universal en todas las plataformas
+           (segura en Android API 26+; incierta en iOS/macOS/Linux).
+  [ ] P11. DECISION serializacion mesh: package:protobuf + protoc
+           (compat de versiones) vs empaquetado binario manual
+           (cero toolchain). Impacta 6a2.
+  [ ] P12. Verificar en prueba de campo (6e) que nearby_connections
+           fragmenta bien payloads en el MTU real del dispositivo;
+           el fragmentador GATT solo como fallback BLE crudo.
+
+--------------------------------------------------------------
+ 8. CRITERIOS DE ACEPTACION Y VERIFICACION
+--------------------------------------------------------------
+  - flutter analyze sin errores tras cada fase.
+  - Unit tests obligatorios en FASE 6a/6b (cripto, HLC, LWW,
+    gossip) - todo puro Dart, no dependen de hardware.
+  - Regresion: las funciones existentes (extraccion de noticias,
+    geocercas, dead-man, cola SOS) deben seguir pasando tests:
+    test/*.dart actuales.
+  - Cada fase cerrada = apk instalable y verificado en dispositivo.
+
+--------------------------------------------------------------
+ 9. RIESGOS Y SUPUESTOS
+--------------------------------------------------------------
+  - Play Services (GMS) disponible para Nearby Connections. Si no:
+    fallback "store & forward" offline puro (sin mesh). Supuesto.
+  - FGS SPECIAL_USE puede requerir whitelist en OEMs
+    (Xiaomi/Huawei/Oppo) que matan procesos en background.
+  - Android 12+ exige permiso de ubicacion en runtime para Nearby.
+  - No hay garantia de entrega en una malla (best effort): el
+    protocolo es fire-and-forget con reintento hasta TTL.
+  - Las funciones de ubicacion/audio estan sujetas a politica de
+    tienda; este proyecto asume sideload / despliegue privado.
+  - El toolchain protoc/protoc-gen-dart en Windows es un paso de
+    setup adicional; si no se quiere, se opta por empaquetado
+    binario manual (P11).
+
+================================================================
+ FIN DE DOCUMENTO - Actualizar al cerrar cada fase / evaluacion
+================================================================

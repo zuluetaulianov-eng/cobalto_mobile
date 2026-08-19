@@ -8,7 +8,7 @@ import 'crypto_vault_service.dart';
 class LocalDbService {
   static Database? _database;
   static const String _dbName = 'cobalto_edge.db';
-  static const int _dbVersion = 3;
+  static const int _dbVersion = 4;
 
   static Future<Database> get database async {
     if (_database != null) return _database!;
@@ -88,6 +88,17 @@ class LocalDbService {
             timestamp TEXT NOT NULL
           )
         ''');
+
+        await db.execute('''
+          CREATE TABLE survivor_profile (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            blood_type TEXT,
+            allergies TEXT,
+            medical_conditions TEXT,
+            notes TEXT,
+            updated_at TEXT NOT NULL
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -112,6 +123,18 @@ class LocalDbService {
               event TEXT NOT NULL,
               data TEXT,
               timestamp TEXT NOT NULL
+            )
+          ''');
+        }
+        if (oldVersion < 4) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS survivor_profile (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              blood_type TEXT,
+              allergies TEXT,
+              medical_conditions TEXT,
+              notes TEXT,
+              updated_at TEXT NOT NULL
             )
           ''');
         }

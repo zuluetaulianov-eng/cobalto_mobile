@@ -104,6 +104,25 @@ class TacticalCameraService {
     }
   }
 
+  /// Enciende/apaga la linterna SIN liberar el sensor. Es la operación que
+  /// usa la baliza MORSE (patrón SOS con el flash), que conmuta rápido y no
+  /// debe re-inicializar la cámara en cada fase.
+  static Future<bool> setTorch(bool on) async {
+    if (on) {
+      final bool ok = await initCamera();
+      if (!ok || _controller == null) return false;
+    } else if (_controller == null || !_controller!.value.isInitialized) {
+      return true; // Ya apagado.
+    }
+    try {
+      await _controller!.setFlashMode(on ? FlashMode.always : FlashMode.off);
+      return true;
+    } catch (e) {
+      debugPrint('⚠️ No se pudo conmutar la linterna ($on): $e');
+      return false;
+    }
+  }
+
   /// Apaga la linterna y libera el sensor.
   static Future<void> stopTorch() async {
     if (_controller != null && _controller!.value.isInitialized) {

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../services/aegis_zero_click_panic_service.dart';
 import '../services/emergency_service.dart';
 import '../services/stealth_service.dart';
 import '../services/dead_man_switch_service.dart';
@@ -26,16 +29,62 @@ class _MainScreenState extends State<MainScreen> {
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  Timer? _panicConfirmTimer;
+
   @override
   void initState() {
     super.initState();
     EmergencyService().addListener(_onEmergencyChanged);
+    // Fase 5: pánico 0-clic (Volumen DOWN × 3).
+    ZeroClickPanicService.attach();
+    ZeroClickPanicService.onConfirmationRequired = _onZeroClickConfirmation;
+    ZeroClickPanicService.onPanicTriggered = () {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🚨 PÁNICO 0-CLIC ACTUADO: SOS transmitido a la base.'),
+          backgroundColor: Color(0xFFFF2D55),
+          duration: Duration(seconds: 6),
+        ),
+      );
+    };
   }
 
   @override
   void dispose() {
     EmergencyService().removeListener(_onEmergencyChanged);
+    ZeroClickPanicService.detach();
+    ZeroClickPanicService.onConfirmationRequired = null;
+    ZeroClickPanicService.onPanicTriggered = null;
+    _panicConfirmTimer?.cancel();
     super.dispose();
+  }
+
+  /// Muestra SnackBar de confirmación de pánico 0-clic con ventana de 3 s.
+  void _onZeroClickConfirmation() {
+    if (!mounted) return;
+    _panicConfirmTimer?.cancel();
+    int countdown = 3;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '⚡ PÁNICO 0-CLIC: SOS en $countdown s — toca CANCELAR para abortar.',
+        ),
+        backgroundColor: const Color(0xFFFF9500),
+        duration: const Duration(seconds: 4),
+        action: SnackBarAction(
+          label: 'CANCELAR',
+          textColor: Colors.white,
+          onPressed: () {
+            _panicConfirmTimer?.cancel();
+          },
+        ),
+      ),
+    );
+    _panicConfirmTimer = Timer(const Duration(seconds: 3), () {
+      ZeroClickPanicService.firePanicConfirmed();
+    });
   }
 
   void _onEmergencyChanged() {

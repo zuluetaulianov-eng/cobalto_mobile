@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 
+import '../services/app_logger.dart';
 import '../services/dead_man_switch_service.dart';
 import '../services/emergency_service.dart';
 import '../services/gps_service.dart';
 import '../services/local_db_service.dart';
+import '../services/notification_service.dart';
 import '../services/tactical_camera_service.dart';
 
 /// Pantalla táctica de alarma (SIRENA DE LOCALIZACIÓN).
@@ -23,13 +26,28 @@ class _EmergencyAlarmScreenState extends State<EmergencyAlarmScreen>
     with WidgetsBindingObserver {
   Timer? _strobeTimer;
   Timer? _hapticTimer;
+  Timer? _morseTimer;
   bool _strobeOn = true;
   bool _torchOn = false;
+  bool _sirenMuted = false;
+  bool _morseActive = false;
+  int _morseStep = 0;
+
+  /// Patrón MORSE de SOS con el flash de linterna (unidad base = 200 ms):
+  ///  S = 3 puntos(...)   O = 3 rayas(---)   S = 3 puntos(...)
+  ///  Estructura (onMs, offMs): punto=200, raya=600, intra-letra=200,
+  ///  entre-letras=600, fin de palabra=1400 (reinicio del bucle).
+  static const List<(int, int)> _morseSosPattern = [
+    (200, 200), (200, 200), (200, 600),
+    (600, 200), (600, 200), (600, 600),
+    (200, 200), (200, 200), (200, 1400),
+  ];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _startSiren();
     // Estroboscopio rojo (~2.5 Hz) para máxima visibilidad.
     _strobeTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
       if (mounted) setState(() => _strobeOn = !_strobeOn);
@@ -49,13 +67,40 @@ class _EmergencyAlarmScreenState extends State<EmergencyAlarmScreen>
     WidgetsBinding.instance.removeObserver(this);
     _strobeTimer?.cancel();
     _hapticTimer?.cancel();
-    if (_torchOn) {
+    _morseTimer?.cancel();
+    FlutterRingtonePlayer().stop();
+    if (_torchOn || _morseActive) {
       TacticalCameraService.stopTorch();
     }
     super.dispose();
   }
 
+  /// Hace sonar la sirena de alarma del sistema a máximo volumen en bucle,
+  /// para que los equipos de rescate localicen al operador sin necesidad de
+  /// que este grite. Best-effort: si el dispositivo no expone tono de alarma,
+  /// el estrobo y los hápticos se mantienen.
+  void _startSiren() {
+    try {
+      FlutterRingtonePlayer().playAlarm(asAlarm: true, looping: true, volume: 1.0);
+    } catch (e) {
+      AppLogger.warn('No se pudo iniciar la sirena de alarma.', tag: 'Alarm', error: e);
+    }
+  }
+
+  void _toggleSiren() {
+    setState(() => _sirenMuted = !_sirenMuted);
+    if (_sirenMuted) {
+      FlutterRingtonePlayer().stop();
+    } else {
+      _startSiren();
+    }
+  }
+
   Future<void> _toggleTorch() async {
+    if (_morseActive) {
+      _stopMorse();
+      setState(() => _morseActive = false);
+    }
     final bool on = !_torchOn;
     await TacticalCameraService.disposeCamera();
     final bool ok = on ? await TacticalCameraService.startTorch() : false;
@@ -72,6 +117,65 @@ class _EmergencyAlarmScreenState extends State<EmergencyAlarmScreen>
     }
   }
 
+  /// Activa/desactiva la BALIZA DE RESCATE MORSE: el flash de la cámara
+  /// parpadea el patrón SOS (···−−−···) en bucle continuo. Optimiza la
+  /// visibilidad a distancia con consumo acotado (flash solo en los pulsos).
+  Future<void> _toggleMorse() async {
+    if (_morseActive) {
+      _stopMorse();
+      if (mounted) setState(() => _morseActive = false);
+      return;
+    }
+    final bool ok = await TacticalCameraService.setTorch(true);
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Flash no soportado: baliza morse no disponible.'),
+          backgroundColor: Color(0xFFFF2D55),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _morseActive = true;
+      if (_torchOn) _torchOn = false;
+    });
+    _startMorseLoop();
+  }
+
+  void _startMorseLoop() {
+    _morseStep = 0;
+    _morsePulseOn();
+  }
+
+  void _morsePulseOn() {
+    if (!mounted || !_morseActive) return;
+    final step = _morseSosPattern[_morseStep];
+    unawaited(TacticalCameraService.setTorch(true));
+    _morseTimer?.cancel();
+    _morseTimer = Timer(Duration(milliseconds: step.$1), _morsePulseOff);
+  }
+
+  void _morsePulseOff() {
+    if (!mounted || !_morseActive) return;
+    final step = _morseSosPattern[_morseStep];
+    unawaited(TacticalCameraService.setTorch(false));
+    _morseTimer?.cancel();
+    _morseTimer = Timer(Duration(milliseconds: step.$2), () {
+      if (!mounted || !_morseActive) return;
+      _morseStep = (_morseStep + 1) % _morseSosPattern.length;
+      _morsePulseOn();
+    });
+  }
+
+  void _stopMorse() {
+    _morseActive = false;
+    _morseTimer?.cancel();
+    _morseTimer = null;
+    unawaited(TacticalCameraService.stopTorch());
+  }
+
   void _cancelAndClose() {
     final deadMan = DeadManSwitchService();
     if (deadMan.isEmergencyAlertActive) {
@@ -79,6 +183,8 @@ class _EmergencyAlarmScreenState extends State<EmergencyAlarmScreen>
     }
     EmergencyService().cancelAlarm();
     LocalDbService.logEmergencyEvent('ALARMA_CANCELADA_POR_OPERADOR');
+    // Fase de RECUPERACIÓN: ofrecer el check-in "Estoy a salvo" (lockscreen).
+    unawaited(NotificationService.showCheckInNotification());
     Navigator.of(context).pop();
   }
 
@@ -120,8 +226,10 @@ class _EmergencyAlarmScreenState extends State<EmergencyAlarmScreen>
           child: Scaffold(
           backgroundColor: _strobeOn ? const Color(0xFFFF2D55) : const Color(0xFF5A0A14),
           body: SafeArea(
-            child: Column(
+            child: Stack(
               children: [
+                Column(
+                  children: [
                 const Spacer(),
                 const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 72),
                 const SizedBox(height: 8),
@@ -185,6 +293,12 @@ class _EmergencyAlarmScreenState extends State<EmergencyAlarmScreen>
                       onTap: _toggleTorch,
                     ),
                     _alarmAction(
+                      icon: _morseActive ? Icons.radio_button_checked : Icons.rss_feed,
+                      label: _morseActive ? 'BALIZA MORSE ON' : 'BALIZA MORSE SOS',
+                      onTap: _toggleMorse,
+                      highlight: _morseActive,
+                    ),
+                    _alarmAction(
                       icon: Icons.check_circle,
                       label: 'SOY OPERADOR / CANCELAR',
                       onTap: _cancelAndClose,
@@ -193,6 +307,23 @@ class _EmergencyAlarmScreenState extends State<EmergencyAlarmScreen>
                   ],
                 ),
                 const SizedBox(height: 24),
+                  ],
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: Icon(
+                      _sirenMuted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                    tooltip: _sirenMuted
+                        ? 'Activar sirena'
+                        : 'Silenciar sirena (estrobo y vibración continúan)',
+                    onPressed: _toggleSiren,
+                  ),
+                ),
               ],
             ),
           ),

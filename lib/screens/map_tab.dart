@@ -8,6 +8,7 @@ import '../config/map_html_content.dart';
 import '../services/app_logger.dart';
 import '../services/geofence_service.dart';
 import '../services/gps_service.dart';
+import '../services/aegis_survival_map_service.dart';
 import '../services/map_points_service.dart';
 import '../widgets/map_marker_details_sheet.dart';
 
@@ -34,6 +35,7 @@ class _MapTabState extends State<MapTab> {
     'FLIGHT': 0,
     'QUAKE': 0,
     'CCTV': 0,
+    'SURVIVAL_POI': 0, // Fase 4: POIs colaborativos de supervivencia.
   };
 
   @override
@@ -116,6 +118,14 @@ class _MapTabState extends State<MapTab> {
 
     final dynamicPoints = await MapPointsService.buildDynamicPoints();
 
+    // Fase 4: agregar POIs CRDT de supervivencia.
+    try {
+      final survivalPoints = await AegisSurvivalMapService.buildSurvivalMapPoints();
+      dynamicPoints.addAll(survivalPoints);
+    } catch (e) {
+      AppLogger.warn('No se pudieron cargar POIs de supervivencia.', tag: 'Map', error: e);
+    }
+
     // Dibujar las geocercas tácticas activas sobre el mapa Leaflet
     final zones = await GeofenceService.getZones();
     if (zones.isNotEmpty) {
@@ -132,8 +142,10 @@ class _MapTabState extends State<MapTab> {
       await _controller.runJavaScript('updateGeofences([]);');
     }
 
-    // Actualizar contadores
+    // Actualizar contadores (incluyendo SURVIVAL_POI).
     final newCounts = MapPointsService.computeLayerCounts(dynamicPoints);
+    newCounts['SURVIVAL_POI'] =
+        dynamicPoints.where((p) => p['type'] == 'SURVIVAL_POI').length;
 
     if (dynamicPoints.isNotEmpty) {
       final jsonStr = json.encode(dynamicPoints);
@@ -202,6 +214,8 @@ class _MapTabState extends State<MapTab> {
                           _layerChip('✈️ VUELOS', 'FLIGHT', Icons.flight),
                           const SizedBox(width: 5),
                           _layerChip('🌋 SISMOS', 'QUAKE', Icons.waves),
+                          const SizedBox(width: 5),
+                          _layerChip('📍 SUPERVIVENCIA', 'SURVIVAL_POI', Icons.local_hospital),
                           const SizedBox(width: 5),
                           _layerChip('🎥 CCTV', 'CCTV', Icons.videocam),
                         ],

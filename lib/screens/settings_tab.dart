@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../config/api_config.dart';
+import '../services/aegis_black_box_service.dart';
+import '../services/aegis_early_warning_service.dart';
+import '../services/aegis_emergency_kit_service.dart';
+import '../services/aegis_mesh_crypto_service.dart';
+import '../services/aegis_mesh_transport_service.dart';
+import '../services/aegis_survivor_profile_service.dart';
 import '../services/crypto_vault_service.dart';
 import '../services/dead_man_switch_service.dart';
 import '../services/emergency_service.dart';
+import 'aegis_triage_screen.dart';
 import '../services/gps_service.dart';
 import '../services/local_auth_service.dart';
 import '../services/notification_service.dart';
@@ -66,6 +73,14 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   bool _heartbeatEnabled = false;
   bool _hasDuressCode = false;
 
+  // AEGIS: Perfil de sobreviviente + Kit de emergencia + Check-In.
+  String _survivorBloodType = '';
+  final TextEditingController _survivorAllergiesController = TextEditingController();
+  final TextEditingController _survivorConditionsController = TextEditingController();
+  String _kitReminderLabel = 'PENDIENTE';
+  List<Map<String, dynamic>> _kitInventory = [];
+  int _pendingBlackBox = 0;
+
   final List<String> _ollamaModels = [
     'llama3.2',
     'mistral',
@@ -110,6 +125,15 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     final heartbeatMinutes = await EmergencyService.getHeartbeatMinutes();
     final hasDuress = await LocalAuthService.hasDuressCode();
 
+    // AEGIS: sobreviviente + kit.
+    final profile = await AegisSurvivorProfileService.loadProfile();
+    final bloodType = profile['blood_type']?.toString() ?? '';
+    final allergies = profile['allergies']?.toString() ?? '';
+    final conditions = profile['medical_conditions']?.toString() ?? '';
+    final kitReminder = await AegisEmergencyKitService.checkAndSchedule();
+    final kitItems = await AegisEmergencyKitService.getInventory();
+    final int pendingBlackBoxFresh = await AegisBlackBoxService.pendingCount();
+
     if (mounted) {
       setState(() {
         _keywords = result.keywords;
@@ -122,6 +146,12 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         _heartbeatEnabled = heartbeatEnabled;
         _heartbeatIntervalController.text = heartbeatMinutes.toString();
         _hasDuressCode = hasDuress;
+        _survivorBloodType = bloodType;
+        _survivorAllergiesController.text = allergies;
+        _survivorConditionsController.text = conditions;
+        _kitReminderLabel = kitReminder;
+        _kitInventory = kitItems;
+        _pendingBlackBox = pendingBlackBoxFresh;
         _statusMessage = result.connected == true
             ? 'Sincronizado con Estación Base PC'
             : 'Modo Autónomo Local (Dispositivo)';
@@ -806,13 +836,47 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         ),
         const SizedBox(height: 8),
         TacticalActionButton(
-          icon: Icons.warning_amber_rounded,
-          label: 'PROBAR MONITOR HOMBRE MUERTO / INMOVILIDAD (SOS)',
-          color: const Color(0xFFFF9500),
-          onPressed: _toggleDeadManSwitch,
+          icon: Icons.sos,
+          label: '🚨 EMERGENCIA INMINENTE: HACER SONAR ALARMA DE RESCATE',
+          color: const Color(0xFFFF2D55),
+          onPressed: _triggerImminentEmergency,
         ),
         const SizedBox(height: 8),
         const SettingsSectionTitle('☠️ CALIBRACIÓN MONITOR HOMBRE MUERTO'),
+        const SizedBox(height: 6),
+        ListenableBuilder(
+          listenable: DeadManSwitchService(),
+          builder: (context, _) {
+            final service = DeadManSwitchService();
+            return SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                '☠️ VIGILANCIA HOMBRE MUERTO (ARMAR/DESARMAR)',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+              ),
+              subtitle: const Text(
+                'Detecta caída, inmovilización o arrastre y dispara SOS con alarma sonora.',
+                style: TextStyle(fontSize: 10, color: Colors.white54),
+              ),
+              value: service.isActive,
+              activeTrackColor: const Color(0xFFFF9500),
+              onChanged: (value) async {
+                await service.setEnabled(value);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      value
+                          ? '🚨 VIGILANCIA HOMBRE MUERTO ARMADA.'
+                          : '⏸️ Vigilancia de hombre muerto desarmada.',
+                    ),
+                    backgroundColor: value ? const Color(0xFFFF9500) : const Color(0xFF8E8E93),
+                  ),
+                );
+              },
+            );
+          },
+        ),
         const SizedBox(height: 6),
         Row(
           children: [
@@ -998,6 +1062,425 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
         ],
         const SizedBox(height: 16),
 
+        const SettingsSectionTitle('🫀 PERFIL DE SOBREVIVIENTE (AEGIS)'),
+        const SizedBox(height: 6),
+        const Text(
+          'Datos médicos críticos cifrados en reposo (AES-256-GCM). '
+          'Viajan en el paquete de caja negra hacia los equipos de rescate.',
+          style: TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141824),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _survivorBloodType.isEmpty ? null : _survivorBloodType,
+              dropdownColor: const Color(0xFF141824),
+              isExpanded: true,
+              hint: const Text('TIPO DE SANGRE', style: TextStyle(color: Colors.white38, fontSize: 11, fontFamily: 'monospace')),
+              items: const [
+                'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'DESCONOCIDO',
+              ].map((t) {
+                return DropdownMenuItem(
+                  value: t,
+                  child: Text('🩸 $t', style: const TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'monospace')),
+                );
+              }).toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _survivorBloodType = val);
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _survivorAllergiesController,
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+          decoration: InputDecoration(
+            labelText: 'ALERGIAS',
+            labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+            hintText: 'Ej. penicilina, maní',
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+            filled: true,
+            fillColor: const Color(0xFF141824),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide.none),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _survivorConditionsController,
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+          decoration: InputDecoration(
+            labelText: 'CONDICIONES MÉDICAS',
+            labelStyle: const TextStyle(color: Colors.white38, fontSize: 10),
+            hintText: 'Ej. hipertensión, diabetes',
+            hintStyle: const TextStyle(color: Colors.white24, fontSize: 10),
+            filled: true,
+            fillColor: const Color(0xFF141824),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide.none),
+          ),
+        ),
+        const SizedBox(height: 6),
+        TacticalActionButton(
+          icon: Icons.save,
+          label: 'GUARDAR PERFIL DE SOBREVIVIENTE (CIFRADO)',
+          color: const Color(0xFF30D158),
+          onPressed: _saveSurvivorProfile,
+        ),
+        const SizedBox(height: 16),
+
+        const SettingsSectionTitle('🛡️ CHECK-IN "ESTOY A SALVO" (AEGIS)'),
+        const SizedBox(height: 6),
+        const Text(
+          'Notificación persistente post-emergencia para confirmar tu estado '
+          'desde la pantalla de bloqueo sin abrir la app.',
+          style: TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+        const SizedBox(height: 8),
+        TacticalActionButton(
+          icon: Icons.verified_user,
+          label: 'ENVIAR CHECK-IN DE PRUEBA (NOTIFICACIÓN PERSISTENTE)',
+          color: const Color(0xFF00E5FF),
+          onPressed: _testCheckIn,
+        ),
+        const SizedBox(height: 16),
+
+        const SettingsSectionTitle('🎒 KIT DE EMERGENCIA (AEGIS)'),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF141824),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF00FFAA).withOpacity(0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.update, color: Color(0xFF00FFAA), size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'PRÓXIMA REVISIÓN: $_kitReminderLabel',
+                  style: const TextStyle(color: Color(0xFF00FFAA), fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        ..._kitInventory.map((item) {
+          return CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            controlAffinity: ListTileControlAffinity.leading,
+            activeColor: const Color(0xFF00FFAA),
+            value: item['checked'] == true,
+            title: Text(
+              item['label'].toString(),
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+            ),
+            onChanged: (_) => _toggleKitItem(item['label'].toString()),
+          );
+        }),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: TacticalActionButton(
+                icon: Icons.refresh,
+                label: 'REINICIAR CHECKLIST',
+                color: const Color(0xFFFF9500),
+                onPressed: _resetKitInventory,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TacticalActionButton(
+                icon: Icons.schedule,
+                label: 'REPROGRAMAR CICLO',
+                color: const Color(0xFF00E5FF),
+                onPressed: _resetKitReminder,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        const SettingsSectionTitle('🌋 ALERTA TEMPRANA DE SISMO (AEGIS)'),
+        const SizedBox(height: 6),
+        const Text(
+          'Sensores globales sin servidor: feed directo USGS (fallback al hub), '
+          'algoritmo P/S con ventana de anticipación y sirena local por escala. '
+          'La geocerca activa aviso si el epicentro cae dentro del radio.',
+          style: TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+        const SizedBox(height: 8),
+        ValueListenableBuilder<AegisQuakeAlert?>(
+          valueListenable: AegisEarlyWarningService.lastAlert,
+          builder: (context, alert, _) {
+            final text = alert == null
+                ? 'SIN ALERTAS ACTIVAS · MONITOREO CADA 10 MIN'
+                : 'ÚLTIMA: ${alert.nivel} · ${alert.distanceKm.round()} km · '
+                    'P ~${alert.pArrivalS}s / S ~${alert.sArrivalS}s · '
+                    '${alert.event.place}';
+            return Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF141824),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: (alert?.nivel == 'CRÍTICA' ? const Color(0xFFFF2D55) : const Color(0xFFFF9500))
+                      .withOpacity(0.4),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.waves, color: Color(0xFFFF9500), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        TacticalActionButton(
+          icon: Icons.travel_explore,
+          label: 'PROBAR CICLO DE ALERTA TEMPRANA (POLL NOW)',
+          color: const Color(0xFFFF9500),
+          onPressed: _testEarlyWarning,
+        ),
+        const SizedBox(height: 16),
+
+        const SettingsSectionTitle('📦 CAJA NEGRA AEGIS'),
+        const SizedBox(height: 6),
+        const Text(
+          'Paquete cifrado AES-256 (batería + GPS + tipo de sangre) enviado a '
+          'la base con cola de reintento offline. Fotos silenciosas de contexto '
+          'con estampado de telemetría. Grabación de audio: APLAZADA.',
+          style: TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+        const SizedBox(height: 8),
+        ValueListenableBuilder<Map<String, dynamic>?>(
+          valueListenable: AegisBlackBoxService.lastPackage,
+          builder: (context, pkg, _) {
+            final text = pkg == null
+                ? 'SIN PAQUETE EMITIDO AUN'
+                : 'ÚLTIMO: #${pkg['seq']} · ${pkg['created_utc'] ?? ''} · '
+                    'SHA256 ${pkg['hash_sha256']?.toString().substring(0, 12) ?? ''}…';
+            return Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF141824),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFB388FF).withOpacity(0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.inventory_2, color: Color(0xFFB388FF), size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      text,
+                      style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TacticalActionButton(
+                icon: Icons.camera_alt,
+                label: 'FOTO DE CONTEXTO',
+                color: const Color(0xFF00FFAA),
+                onPressed: _testSilentPhoto,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TacticalActionButton(
+                icon: Icons.send_to_mobile,
+                label: 'EMITIR PAQUETE CIFRADO',
+                color: const Color(0xFFB388FF),
+                onPressed: _emitBlackBox,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Center(
+          child: Text(
+            'PAQUETES PENDIENTES DE ENLACE: $_pendingBlackBox',
+            style: const TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace'),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        const SettingsSectionTitle('🩺 TRIAJE Y SEGURIDAD MESH (AEGIS)'),
+        const SizedBox(height: 6),
+        TacticalActionButton(
+          icon: Icons.medical_services,
+          label: 'ABRIR TRIAJE DE PRIMEROS AUXILIOS OFFLINE (7 PROTOCOLOS)',
+          color: const Color(0xFFFF2D55),
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AegisTriageScreen()),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<Map<String, String>>(
+          future: AegisMeshCryptoService.getIdentityInfo(),
+          builder: (context, snapshot) {
+            final info = snapshot.data;
+            final fp = info?['fingerprint'] ?? 'Generando clave...';
+            final nid = info?['node_id'] ?? '';
+            return Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF141824),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.fingerprint, color: Color(0xFF00E5FF), size: 16),
+                      SizedBox(width: 8),
+                      Text(
+                        'IDENTIDAD MESH PKI (Ed25519 / X25519)',
+                        style: TextStyle(
+                          color: Color(0xFF00E5FF),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'HUELLA TOFU: $fp',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'NODE ID: ${nid.length > 20 ? '${nid.substring(0, 20)}…' : nid}',
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 9,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        StatefulBuilder(
+          builder: (context, setMeshState) {
+            final isRunning = AegisMeshTransportService.isRunning;
+            final peers = AegisMeshTransportService.activePeersCount;
+            return Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF141824),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isRunning ? const Color(0xFF00FFAA).withOpacity(0.4) : Colors.white10,
+                ),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.hub,
+                            color: isRunning ? const Color(0xFF00FFAA) : Colors.white38,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isRunning ? 'RED MESH ACTIVA (P2P)' : 'RED MESH DETENIDA',
+                            style: TextStyle(
+                              color: isRunning ? const Color(0xFF00FFAA) : Colors.white54,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        ],
+                      ),
+                      Switch(
+                        value: isRunning,
+                        activeColor: const Color(0xFF00FFAA),
+                        onChanged: (val) async {
+                          if (val) {
+                            await AegisMeshTransportService.startMesh();
+                          } else {
+                            await AegisMeshTransportService.stopMesh();
+                          }
+                          setMeshState(() {});
+                        },
+                      ),
+                    ],
+                  ),
+                  if (isRunning) ...[
+                    const Divider(color: Colors.white12, height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'PEERS CONECTADOS: $peers',
+                          style: const TextStyle(color: Colors.white70, fontSize: 10, fontFamily: 'monospace'),
+                        ),
+                        FutureBuilder<int>(
+                          future: AegisMeshTransportService.getStoredPacketsCount(),
+                          builder: (context, snapshot) {
+                            return Text(
+                              'STORED: ${snapshot.data ?? 0} PKTS',
+                              style: const TextStyle(color: Colors.white38, fontSize: 10, fontFamily: 'monospace'),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+
         const SettingsSectionTitle('🧹 LIMPIEZA DE MEMORIA LOCAL'),
         const SizedBox(height: 6),
         TacticalActionButton(
@@ -1128,19 +1611,15 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     );
   }
 
-  void _toggleDeadManSwitch() {
-    final service = DeadManSwitchService();
-    final nowActive = !service.isActive;
-    service.setEnabled(nowActive);
+  void _triggerImminentEmergency() {
+    // Abre la pantalla de alarma con sirena sonora al máximo volumen y
+    // transmite SOS a la base (sin escalada externa para no tapar la alarma).
+    EmergencyService().triggerRescueSignal();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          nowActive
-              ? '🚨 MONITOR HOMBRE MUERTO ACTIVADO (Caídas + Inmovilización).'
-              : '⏸️ Monitor de hombre muerto pausado.',
-        ),
-        backgroundColor: nowActive ? const Color(0xFFFF9500) : const Color(0xFF8E8E93),
+      const SnackBar(
+        content: Text('🚨 ALARMA DE RESCATE ACTIVADA: TOQUE LA PANTALLA O PULSE CANCELAR PARA DETENER.'),
+        backgroundColor: Color(0xFFFF2D55),
       ),
     );
   }
@@ -1257,6 +1736,123 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
       const SnackBar(
         content: Text('ℹ️ Código de coacción eliminado.'),
         backgroundColor: Color(0xFF8E8E93),
+      ),
+    );
+  }
+
+  // ── AEGIS: PERFIL DE SOBREVIVIENTE ──
+
+  Future<void> _saveSurvivorProfile() async {
+    await AegisSurvivorProfileService.saveProfile(
+      bloodType: _survivorBloodType,
+      allergies: _survivorAllergiesController.text.trim(),
+      medicalConditions: _survivorConditionsController.text.trim(),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ Perfil de sobreviviente guardado (cifrado AES-256).'),
+        backgroundColor: Color(0xFF00FFAA),
+      ),
+    );
+  }
+
+  // ── AEGIS: KIT DE EMERGENCIA ──
+
+  Future<void> _toggleKitItem(String label) async {
+    final items = _kitInventory;
+    for (final item in items) {
+      if (item['label'] == label) item['checked'] = !(item['checked'] == true);
+    }
+    setState(() => _kitInventory = List.from(items));
+    await AegisEmergencyKitService.saveInventory(items);
+  }
+
+  Future<void> _resetKitInventory() async {
+    await AegisEmergencyKitService.resetInventory();
+    final fresh = await AegisEmergencyKitService.getInventory();
+    if (!mounted) return;
+    setState(() => _kitInventory = fresh);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🎒 Inventario del kit restablecido al estándar.'),
+        backgroundColor: Color(0xFF00E5FF),
+      ),
+    );
+  }
+
+  Future<void> _resetKitReminder() async {
+    await AegisEmergencyKitService.resetReminderTimer();
+    final label = await AegisEmergencyKitService.checkAndSchedule();
+    if (!mounted) return;
+    setState(() => _kitReminderLabel = label);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🔄 Ciclo de mantenimiento del kit reprogramado.'),
+        backgroundColor: Color(0xFF00FFAA),
+      ),
+    );
+  }
+
+  // ── AEGIS: CHECK-IN "ESTOY A SALVO" (RECUPERACIÓN) ──
+
+  Future<void> _testCheckIn() async {
+    await NotificationService.showCheckInNotification();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('🛡️ Notificación de Check-In persistente enviada.'),
+        backgroundColor: Color(0xFF00E5FF),
+      ),
+    );
+  }
+
+  // ── AEGIS: ALERTA TEMPRANA (SISMO) ──
+
+  Future<void> _testEarlyWarning() async {
+    final alert = await AegisEarlyWarningService.pollNow();
+    if (!mounted) return;
+    final message = alert == null
+        ? '🌋 Ciclo ejecutado. Sin sismo en la geocerca o sin fix GPS.'
+        : '🌋 Alerta [${alert.nivel}] a ${alert.distanceKm.round()} km '
+            '(ondas S en ~${alert.sArrivalS} s).';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFFFF9500),
+      ),
+    );
+  }
+
+  // ── AEGIS: CAJA NEGRA ──
+
+  Future<void> _testSilentPhoto() async {
+    final result = await AegisBlackBoxService.captureSilentContextPhoto();
+    if (!mounted) return;
+    final message = result == null
+        ? '📷 Captura omitida (caja negra off o batería baja).'
+        : '📷 Foto de contexto silenciosa guardada y estampada.';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFF00FFAA),
+      ),
+    );
+  }
+
+  Future<void> _emitBlackBox() async {
+    final envelope = await AegisBlackBoxService.emitPackage();
+    final pending = await AegisBlackBoxService.pendingCount();
+    if (!mounted) return;
+    setState(() => _pendingBlackBox = pending);
+    final message = envelope == null
+        ? '📦 Caja negra desactivada: paquete no emitido.'
+        : '📦 Paquete AEGIS #${envelope['seq']} emitido '
+            '(enviado o encolado · pendientes: $_pendingBlackBox).';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: const Color(0xFFB388FF),
       ),
     );
   }

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
@@ -277,7 +277,7 @@ class CobaltoApiService {
     try {
       final response = await _client
           .post(
-            Uri.parse('${ApiConfig.baseUrl}/api/sos'),
+            Uri.parse('${ApiConfig.baseUrl}/api/telemetry/heartbeat'),
             headers: _headers,
             body: json.encode(heartbeatData),
           )
@@ -286,6 +286,31 @@ class CobaltoApiService {
         return {'success': true};
       }
       return {'success': false, 'error': 'Heartbeat rechazado (HTTP ${response.statusCode}).'};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Publica el Paquete de Caja Negra AEGIS (batería + GPS + perfil de
+  /// sobreviviente) al nodo central. El payload va CIFRADO en origen
+  /// (AES-256-GCM) y se envía como un solo blob; la base lo ingiere tal cual.
+  static Future<Map<String, dynamic>> sendBlackBoxPackage(
+      Map<String, dynamic> envelope) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}/api/aegis/blackbox'),
+            headers: _headers,
+            body: json.encode(envelope),
+          )
+          .timeout(const Duration(seconds: 12));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'success': true};
+      }
+      return {
+        'success': false,
+        'error': 'BlackBox rechazado (HTTP ${response.statusCode}).',
+      };
     } catch (e) {
       return {'success': false, 'error': e.toString()};
     }

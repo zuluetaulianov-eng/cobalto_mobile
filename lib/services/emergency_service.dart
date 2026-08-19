@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/api_config.dart';
+import 'aegis_battery_service.dart';
 import 'app_logger.dart';
 import 'cobalto_api_service.dart';
 import 'gps_service.dart';
@@ -117,15 +119,23 @@ class EmergencyService extends ChangeNotifier {
 
   Future<void> _publishHeartbeat() async {
     final TacticalSnapshot? snapshot = GpsService.lastSnapshot;
+    final int battery = AegisBatteryService.lastLevel ?? snapshot?.batteryLevel ?? 100;
+    final String rawUsername = ApiConfig.username.trim();
+    final String opName = rawUsername.isNotEmpty ? rawUsername : 'Operador Terreno';
+    final String cleanCode = opName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
+    final String opId = 'OP-${cleanCode.isEmpty ? "ALPHA-1" : cleanCode}';
+
     final Map<String, dynamic> beat = {
-      'type': 'heartbeat',
-      'severity': 'INFO',
-      'alert': 'OPERATOR HEARTBEAT ACK',
-      'timestamp': DateTime.now().toIso8601String(),
-      'lat': snapshot?.lat, // null = sin fix
-      'lng': snapshot?.lon,
-      'accuracy_m': snapshot?.accuracyM,
-      'source': 'mobile_heartbeat',
+      'operator_id': opId,
+      'operator_name': opName,
+      'latitude': snapshot?.lat ?? 0.0,
+      'longitude': snapshot?.lon ?? 0.0,
+      'altitude': snapshot?.altitudeM ?? 0.0,
+      'battery_level': battery,
+      'status': _alarmActive ? 'SOS' : 'PATROL',
+      'network_type': '4G',
+      'device_model': 'Cobalto Mobile',
+      'unit_group': 'ALPHA',
     };
     unawaited(CobaltoApiService.sendHeartbeat(beat));
   }
@@ -187,6 +197,40 @@ class EmergencyService extends ChangeNotifier {
     }
 
     captureContextPhoto();
+  }
+
+  /// EMERGENCIA INMINENTE — Alarma de rescate local ruidosa.
+  ///
+  /// Pensada para casos donde el operador NO puede gritar ni operar la
+  /// pantalla (p. ej. atrapado bajo escombros): abre la pantalla de alarma con
+  /// la sirena sonora al máximo volumen para que los rescatistas lo
+  /// localicen, transmite un SOS a la base con la posición fresca, pero NO
+  /// escala a SMS/llamada (evita que apps externas tapen la pantalla de alarma).
+  Future<void> triggerRescueSignal() async {
+    activateAlarm('EMERGENCIA INMINENTE // ALARMA DE RESCATE LOCAL');
+
+    final TacticalSnapshot? snapshot = await _freshSnapshot();
+    final Map<String, dynamic> rescueData = {
+      'type': 'sos',
+      'severity': 'CRITICAL',
+      'alert': 'RESCUE ALARM - OPERADOR ATRAPADO, NO PUEDE GRITAR, POSICIÓN REQUIERE RESCATE',
+      'timestamp': DateTime.now().toIso8601String(),
+      'lat': snapshot?.lat,
+      'lng': snapshot?.lon,
+      'accuracy_m': snapshot?.accuracyM,
+      'source': 'rescue_alarm',
+    };
+
+    StealthService().triggerHapticPattern(DEFCONLevel.critical);
+    VoiceService.speakAlert(
+      title: 'Alarma de rescate activada',
+      body: 'Sirena sonando al máximo volumen. Posición transmitida.',
+      level: 'CRÍTICA',
+    );
+    await LocalDbService.logEmergencyEvent('RESCUE_ALARM', data: rescueData);
+
+    // SOS a la base sin escalada externa (la sirena local es la prioridad).
+    await TelemetrySyncService.enqueueAndSendSos(rescueData);
   }
 
   /// SOS silencioso de coacción: el operador ingresa con la contraseña de

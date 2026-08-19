@@ -25,6 +25,10 @@ class TacticalSnapshot {
   /// Marca de tiempo UTC del fix.
   final DateTime timestampUtc;
 
+  /// Nivel de batería del dispositivo al momento del fix (0-100).
+  /// Lo inyecta el monitor de poder AEGIS; null si aún no se midió.
+  final int? batteryLevel;
+
   const TacticalSnapshot({
     required this.lat,
     required this.lon,
@@ -33,8 +37,24 @@ class TacticalSnapshot {
     this.speedMps,
     this.accuracyM,
     this.speedAccuracyMps,
+    this.batteryLevel,
     required this.timestampUtc,
   });
+
+  /// Copia del snapshot con campos opcionales reemplazados.
+  /// Se usa para inyectar telemetría contextual (batería) sin romper
+  /// el snapshot original del stream GPS.
+  TacticalSnapshot copyWith({int? batteryLevel}) => TacticalSnapshot(
+        lat: lat,
+        lon: lon,
+        altitudeM: altitudeM,
+        headingDeg: headingDeg,
+        speedMps: speedMps,
+        accuracyM: accuracyM,
+        speedAccuracyMps: speedAccuracyMps,
+        batteryLevel: batteryLevel ?? this.batteryLevel,
+        timestampUtc: timestampUtc,
+      );
 
   factory TacticalSnapshot.fromPosition(Position p) => TacticalSnapshot(
         lat: p.latitude,

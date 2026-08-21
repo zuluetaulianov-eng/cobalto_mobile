@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../config/api_config.dart';
+import '../utils/text_sanitizer.dart';
 import 'app_logger.dart';
 import 'settings_persistence_service.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -59,13 +62,13 @@ class VoiceService {
     }
   }
 
-  /// Inicializa el sintetizador de voz auditivo (TTS)
+  /// Inicializa el sintetizador de voz auditivo (TTS) con modulación táctica
   static Future<void> initTts() async {
     if (_isTtsInitialized) return;
     try {
       await _flutterTts.setLanguage('es-ES');
-      await _flutterTts.setPitch(1.0);
-      await _flutterTts.setSpeechRate(0.48); // Velocidad clara táctica militar
+      await _flutterTts.setPitch(0.92); // Timbre autoritario tipo C4I
+      await _flutterTts.setSpeechRate(0.50); // Cadencia militar clara y firme
 
       _flutterTts.setStartHandler(() {
         _isSpeaking = true;
@@ -98,7 +101,6 @@ class VoiceService {
     }
 
     // Guard mutuo: el micrófono y el altavoz no pueden operar a la vez.
-    // Si una alerta se está pronunciando, la detenemos antes de escuchar.
     if (_isSpeaking) {
       await stopSpeech();
     }
@@ -129,16 +131,14 @@ class VoiceService {
     }
   }
 
-  /// Lee auditivamente por altavoz una alerta táctica.
-  /// Respeta el modo silencio y no interrumpe una dictado STT en curso.
+  /// Lee auditivamente por altavoz una alerta táctica acotada.
+  /// Respeta el modo silencio, aplica el prefijo configurado y evita monólogos extensos.
   static Future<void> speakAlert({
     required String title,
     required String body,
     String level = 'ALTA',
   }) async {
     if (_silentMode) return;
-
-    // Guard mutuo: no pronunciar mientras el operador dicta por micrófono.
     if (_isListening) return;
 
     await initTts();
@@ -146,7 +146,41 @@ class VoiceService {
       await stopSpeech();
     }
 
-    final String message = 'Atención Operador. Alerta táctica nivel $level. $title. $body';
+    // Micro-señal táctica háptica previa a la voz
+    try {
+      await HapticFeedback.mediumImpact();
+    } catch (_) {}
+
+    final cleanTitle = TextSanitizer.clean(title);
+    final cleanBody = TextSanitizer.clean(body);
+
+    final prefixMode = await SettingsPersistenceService.getVoicePrefixMode();
+    final username = ApiConfig.username.isNotEmpty ? ApiConfig.username : 'Operador';
+
+    String intro = '';
+    switch (prefixMode) {
+      case 'direct':
+        intro = '';
+        break;
+      case 'tactical':
+        intro = 'Novedad nivel $level. ';
+        break;
+      case 'operator':
+        intro = '$username, ';
+        break;
+      case 'short':
+      default:
+        intro = 'Alerta COBALTO. ';
+        break;
+    }
+
+    // Acotar el cuerpo del mensaje (máximo 80 caracteres adicionales) para evitar lecturas infinitas
+    String bodyExcerpt = '';
+    if (cleanBody.isNotEmpty && cleanTitle.length < 60) {
+      bodyExcerpt = cleanBody.length > 80 ? '${cleanBody.substring(0, 80)}...' : cleanBody;
+    }
+
+    final String message = '$intro$cleanTitle${bodyExcerpt.isNotEmpty ? '. $bodyExcerpt' : ''}';
     try {
       await _flutterTts.speak(message);
     } catch (e) {

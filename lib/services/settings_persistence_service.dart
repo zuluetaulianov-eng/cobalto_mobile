@@ -89,4 +89,17 @@ class SettingsPersistenceService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_silentModeKey, enabled);
   }
+
+  /// Estilo de prefijo de voz para notificaciones ('short', 'direct', 'tactical', 'operator')
+  static const String _voicePrefixModeKey = 'voice_prefix_mode';
+
+  static Future<String> getVoicePrefixMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_voicePrefixModeKey) ?? 'short';
+  }
+
+  static Future<void> saveVoicePrefixMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_voicePrefixModeKey, mode);
+  }
 }

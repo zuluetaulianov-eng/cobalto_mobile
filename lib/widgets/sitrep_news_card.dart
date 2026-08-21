@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/voice_service.dart';
 import '../utils/text_sanitizer.dart';
 
 /// Tarjeta de una entrada SitRep en el feed. Widget puro: recibe la entrada y
@@ -139,6 +140,13 @@ class SitrepNewsCard extends StatelessWidget {
                           style: TextStyle(fontSize: 10, fontFamily: 'monospace'),
                         ),
                         onPressed: onOpenWeb,
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.volume_up_outlined, size: 18, color: Color(0xFF00E5FF)),
+                        tooltip: 'Escuchar Noticia por Voz',
+                        onPressed: () {
+                          VoiceService.speakAlert(title: title, body: summary, level: 'NOTICIA');
+                        },
                       ),
                       IconButton(
                         icon: const Icon(Icons.share_outlined, size: 18, color: Color(0xFF00FFAA)),

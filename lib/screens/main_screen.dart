@@ -1,8 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../config/api_config.dart';
 import '../services/aegis_zero_click_panic_service.dart';
 import '../services/emergency_service.dart';
+import '../services/network_discovery_service.dart';
 import '../services/stealth_service.dart';
 import '../services/dead_man_switch_service.dart';
 import 'emergency_alarm_screen.dart';
@@ -349,11 +352,8 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-/// Cajón de navegación con TODOS los módulos: los 5 primarios (también en la
-/// barra/rail) y los secundarios (HUMINT, Recon, OFAC, Vivo). Elimina el
-/// desbordamiento de una barra inferior con 9 pestañas sin perder acceso a
-/// ningún módulo.
-class _AppDrawer extends StatelessWidget {
+/// Cajón de navegación con TODOS los módulos y filtro de búsqueda táctico en vivo.
+class _AppDrawer extends StatefulWidget {
   final List<String> labels;
   final List<IconData> icons;
   final int currentIndex;
@@ -371,16 +371,36 @@ class _AppDrawer extends StatelessWidget {
   });
 
   @override
+  State<_AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<_AppDrawer> {
+  final TextEditingController _searchController = TextEditingController();
+  String _filter = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final List<int> filteredIndices = [];
+    for (int i = 0; i < widget.labels.length; i++) {
+      if (_filter.isEmpty || widget.labels[i].toLowerCase().contains(_filter.toLowerCase())) {
+        filteredIndices.add(i);
+      }
+    }
+
     return Drawer(
-      backgroundColor: surface,
+      backgroundColor: widget.surface,
       child: SafeArea(
-        child: ListView(
-          padding: EdgeInsets.zero,
+        child: Column(
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              color: accent.withOpacity(0.08),
+              color: widget.accent.withOpacity(0.08),
               child: Row(
                 children: [
                   const Icon(Icons.linear_scale, color: Colors.white70, size: 16),
@@ -388,7 +408,7 @@ class _AppDrawer extends StatelessWidget {
                   Text(
                     'MÓDULOS COBALTO C4I',
                     style: TextStyle(
-                      color: accent,
+                      color: widget.accent,
                       fontSize: 13,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'monospace',
@@ -398,23 +418,64 @@ class _AppDrawer extends StatelessWidget {
                 ],
               ),
             ),
-            ...List.generate(labels.length, (i) {
-              final bool selected = i == currentIndex;
-              return ListTile(
-                leading: Icon(icons[i], color: selected ? accent : Colors.white54),
-                title: Text(
-                  labels[i],
-                  style: TextStyle(
-                    color: selected ? accent : Colors.white,
-                    fontSize: 14,
-                    fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            // BUSCADOR RÁPIDO DE MÓDULOS
+            Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: TextField(
+                controller: _searchController,
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: '🔍 Buscar módulo...',
+                  hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                  isDense: true,
+                  filled: true,
+                  fillColor: Colors.black26,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: widget.accent.withOpacity(0.3)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: widget.accent.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(6),
+                    borderSide: BorderSide(color: widget.accent),
                   ),
                 ),
-                selected: selected,
-                selectedTileColor: accent.withOpacity(0.12),
-                onTap: () => onModuleSelected(i),
-              );
-            }),
+                onChanged: (val) {
+                  setState(() => _filter = val.trim());
+                },
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: EdgeInsets.zero,
+                itemCount: filteredIndices.length,
+                itemBuilder: (context, idx) {
+                  final i = filteredIndices[idx];
+                  final bool selected = i == widget.currentIndex;
+                  return ListTile(
+                    leading: Icon(widget.icons[i], color: selected ? widget.accent : Colors.white54),
+                    title: Text(
+                      widget.labels[i],
+                      style: TextStyle(
+                        color: selected ? widget.accent : Colors.white,
+                        fontSize: 14,
+                        fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    selected: selected,
+                    selectedTileColor: widget.accent.withOpacity(0.12),
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      widget.onModuleSelected(i);
+                    },
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -422,10 +483,9 @@ class _AppDrawer extends StatelessWidget {
   }
 }
 
-/// Franja de estado táctica compacta: conmutador de sigilo (NVG) y chip de
-/// identidad de red. Mantiene el AppBar mínimo (solo el pánico) para evitar
-/// saturación de controles en pantallas de móvil.
-class _StatusStrip extends StatelessWidget {
+/// Franja de estado táctica compacta: conmutador de sigilo (NVG), respuesta háptica
+/// y Chip de Enlace LAN / Autodescubrimiento Zero-Conf en vivo.
+class _StatusStrip extends StatefulWidget {
   final bool isNVG;
   final Color accent;
   final Color surface;
@@ -433,18 +493,62 @@ class _StatusStrip extends StatelessWidget {
   const _StatusStrip({required this.isNVG, required this.accent, required this.surface});
 
   @override
+  State<_StatusStrip> createState() => _StatusStripState();
+}
+
+class _StatusStripState extends State<_StatusStrip> {
+  bool _isDiscovering = false;
+
+  Future<void> _handleQuickDiscovery() async {
+    HapticFeedback.mediumImpact();
+    setState(() => _isDiscovering = true);
+
+    final result = await NetworkDiscoveryService.discoverHub(autoApply: true);
+
+    if (!mounted) return;
+    setState(() => _isDiscovering = false);
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.success && result.hubUrl != null) {
+      final host = result.hubUrl!.replaceAll('http://', '').replaceAll(':8083', '');
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '✅ HUB COBALTO ENCONTRADO EN LAN: $host',
+            style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          ),
+          backgroundColor: const Color(0xFF00E5FF),
+        ),
+      );
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('📱 MODO AUTÓNOMO LOCAL (HUB no detectado en LAN)'),
+          backgroundColor: Color(0xFFFF9500),
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final String currentHost = ApiConfig.baseUrl.replaceAll('http://', '').replaceAll(':8083', '');
+    final bool hasHost = currentHost.isNotEmpty && currentHost != 'localhost';
+
     return Container(
       width: double.infinity,
-      color: isNVG ? surface.withOpacity(0.4) : surface,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      color: widget.isNVG ? widget.surface.withOpacity(0.4) : widget.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       child: Row(
         children: [
           IconButton(
-            onPressed: () => StealthService().toggleStealth(),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              StealthService().toggleStealth();
+            },
             icon: Icon(
-              isNVG ? Icons.wb_sunny : Icons.visibility_off,
-              color: isNVG ? const Color(0xFFFF1E1E) : Colors.white70,
+              widget.isNVG ? Icons.wb_sunny : Icons.visibility_off,
+              color: widget.isNVG ? const Color(0xFFFF1E1E) : Colors.white70,
               size: 18,
             ),
             tooltip: 'Conmutar Modo Sigilo (NVG)',
@@ -453,9 +557,9 @@ class _StatusStrip extends StatelessWidget {
             padding: EdgeInsets.zero,
           ),
           Text(
-            isNVG ? 'SIGILO NVG ACTIVO' : 'MODO C4I NOMINAL',
+            widget.isNVG ? 'SIGILO NVG ACTIVO' : 'MODO C4I NOMINAL',
             style: TextStyle(
-              color: isNVG ? const Color(0xFFFF6666) : accent,
+              color: widget.isNVG ? const Color(0xFFFF6666) : widget.accent,
               fontSize: 9,
               fontWeight: FontWeight.bold,
               fontFamily: 'monospace',
@@ -463,20 +567,50 @@ class _StatusStrip extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: accent.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: accent.withOpacity(0.3)),
-            ),
-            child: Text(
-              isNVG ? 'NVG COBALTO' : 'COBALTO C4I',
-              style: TextStyle(
-                color: accent,
-                fontSize: 9,
-                fontWeight: FontWeight.bold,
-                fontFamily: 'monospace',
+          // CHIP INTERACTIVO DE ENLACE RED / HUB PC
+          GestureDetector(
+            onTap: _isDiscovering ? null : _handleQuickDiscovery,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: _isDiscovering
+                    ? const Color(0xFFFF9500).withOpacity(0.2)
+                    : (hasHost ? widget.accent.withOpacity(0.12) : Colors.white10),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: _isDiscovering
+                      ? const Color(0xFFFF9500)
+                      : (hasHost ? widget.accent.withOpacity(0.4) : Colors.white24),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_isDiscovering)
+                    const SizedBox(
+                      width: 10,
+                      height: 10,
+                      child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFFFF9500)),
+                    )
+                  else
+                    Icon(
+                      hasHost ? Icons.wifi : Icons.wifi_off,
+                      size: 11,
+                      color: hasHost ? widget.accent : Colors.white54,
+                    ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _isDiscovering
+                        ? 'BUSCANDO HUB...'
+                        : (hasHost ? 'HUB: $currentHost' : '📱 AUTÓNOMO'),
+                    style: TextStyle(
+                      color: hasHost ? widget.accent : Colors.white70,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

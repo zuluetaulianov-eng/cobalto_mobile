@@ -15,7 +15,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// La autenticación contra el servidor (JWT) sigue existiendo para las APIs,
 /// pero el acceso a la app ya no queda bloqueado si el servidor está ausente.
 class LocalAuthService {
-  static const _storage = FlutterSecureStorage();
+  static final _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      migrateWithBackup: true,
+    ),
+  );
 
   static const String _usernameKey = 'local_operator_username';
   static const String _saltKey = 'local_operator_salt';

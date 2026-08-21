@@ -13,7 +13,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 ///   - `ENCv2:` → AES-256-GCM (actual).
 ///   - `ENC:`   → esquema XOR legacy, soportado solo para lectura/descifrado.
 class CryptoVaultService {
-  static const _storage = FlutterSecureStorage();
+  static final _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      migrateWithBackup: true,
+    ),
+  );
   static const String _keyAlias = 'cobalto_master_aes_256_key';
   static String? _cachedMasterKey;
 

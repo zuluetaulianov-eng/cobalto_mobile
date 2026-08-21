@@ -45,7 +45,11 @@ class AegisBlackBoxService {
   static const int _nonceLength = 12;
   static const int _macLength = 16;
   static final AesGcm _aesGcm = AesGcm.with256bits();
-  static final FlutterSecureStorage _secureStorage = FlutterSecureStorage();
+  static final FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      migrateWithBackup: true,
+    ),
+  );
 
   static Timer? _photoTimer;
   static Timer? _packageTimer;

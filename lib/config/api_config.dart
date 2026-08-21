@@ -16,7 +16,11 @@ class ApiConfig {
   static const String defaultPassword =
       String.fromEnvironment('COBALTO_DEFAULT_PASSWORD', defaultValue: '');
 
-  static const _storage = FlutterSecureStorage();
+  static final _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      migrateWithBackup: true,
+    ),
+  );
 
   static String baseUrl = defaultBaseUrl;
   static String username = defaultUsername;

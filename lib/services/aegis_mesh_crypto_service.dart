@@ -99,7 +99,11 @@ class AegisMeshCryptoService {
   static const String _trustedPeersAlias = 'aegis_mesh_trusted_peers_v1';
   static const String _encPrefix = 'ENCv2:';
 
-  static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  static final FlutterSecureStorage _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      migrateWithBackup: true,
+    ),
+  );
 
   // Caché en memoria (evita múltiples hits a SecureStorage por sesión).
   static AegisMeshIdentity? _cachedIdentity;

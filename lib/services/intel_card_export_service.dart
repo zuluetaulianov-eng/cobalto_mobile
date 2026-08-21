@@ -71,10 +71,12 @@ class IntelCardExportService {
 
   /// Abre el menú nativo de compartición para el archivo PNG.
   static Future<void> sharePngFile(String filePath, String title, String link) async {
-    await Share.shareXFiles(
-      [XFile(filePath, mimeType: 'image/png', name: 'cobalto_intel_report.png')],
-      text: buildCaption(title, link),
-      subject: title,
+    await SharePlus.instance.share(
+      ShareParams(
+        files: [XFile(filePath, mimeType: 'image/png', name: 'cobalto_intel_report.png')],
+        text: buildCaption(title, link),
+        subject: title,
+      ),
     );
   }
 

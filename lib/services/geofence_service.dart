@@ -298,10 +298,13 @@ class GeofenceService {
     _wasAtBase = false;
   }
 
-  static void restartMonitoring() {
+  static Future<void> restartMonitoring() async {
     final wasMonitoring = _isMonitoring;
     stopMonitoring();
-    if (wasMonitoring) startMonitoring();
+    if (wasMonitoring) {
+      final seconds = await getMonitoringIntervalSeconds();
+      startMonitoring(intervalSeconds: seconds);
+    }
   }
 
   /// Evaluación completa: posición actual vs todas las geocercas activas.

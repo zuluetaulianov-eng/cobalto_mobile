@@ -303,7 +303,19 @@ class LocalDbService {
       if (str != null && str.isNotEmpty) {
         try {
           final decoded = json.decode(str);
-          if (decoded is List) return List<Map<String, dynamic>>.from(decoded);
+          if (decoded is List) {
+            final List<Map<String, dynamic>> results = [];
+            for (final item in decoded) {
+              if (item is! Map) continue;
+              final Map<String, dynamic> mutable =
+                  Map<String, dynamic>.from(item);
+              final encDesc = mutable['description']?.toString() ?? '';
+              mutable['description'] =
+                  await CryptoVaultService.decryptText(encDesc);
+              results.add(mutable);
+            }
+            return results;
+          }
         } catch (e2) {
           AppLogger.warn('Cache prefs de reportes corrupto.', tag: 'LocalDb', error: e2);
         }

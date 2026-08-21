@@ -28,7 +28,6 @@ import 'emergency_service.dart';
 /// Si el callback no está conectado (background), el SOS se dispara directo.
 class ZeroClickPanicService {
   static const String _enabledKey = 'aegis_zero_click_enabled';
-  static const String _pressesKey = 'aegis_zero_click_presses'; // count en prefs (debug)
   static const int _targetPresses = 3;
   static const Duration _window = Duration(seconds: 2);
 

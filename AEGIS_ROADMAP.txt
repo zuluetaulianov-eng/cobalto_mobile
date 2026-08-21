@@ -2,7 +2,8 @@
  COBALTO MOBILE - PLAN AEGIS (vNEXT)
  Documento vivo de planificacion - NO es especificacion cerrada
  Fecha de creacion: 2026-08-18
- Estado: EN EVALUACION (aun NO se modifica codigo)
+ Ultima revision: 2026-08-21
+ Estado: FASES 1-6b IMPLEMENTADAS — Pruebas de campo pendientes
 ================================================================
 
 INDICE
@@ -104,43 +105,46 @@ AEGIS actua en tres fases temporales:
         de esquema del hub (fires/FIRMS sin coords en fetchRealtime).
 
   FASE 3 - CAJA NEGRA (escalable, sin grabacion de audio v1)
-    [ ] Fotos silenciosas continuas de contexto.
-    [ ] Paquete cifrado AEGIS: battery + GPS + altitud + sangre
+    [x] Fotos silenciosas continuas de contexto.
+    [x] Paquete cifrado AEGIS: battery + GPS + altitud + sangre
         -> cola de reintento (reutiliza TelemetrySyncService).
     [ ] Grabacion de audio background: APLAZADA (permisos
         Android 14+ mediante VisualMediaProjection). Bugtracker.
 
   FASE 4 - RECUPERACION
-    [ ] Mapa colaborativo de supervivencia (POIs):
+    [x] Mapa colaborativo de supervivencia (POIs):
         hospital/agua/carretera bloqueada/escombros.
         Capa nueva sobre map_points_service con LWW+CRDT.
     [ ] Aceleracion espacial R-Tree: indice virtual + triggers
         + consulta por bounding box del viewport Leaflet.
         OPTIONAL (solo si la escala lo justifica; fallback a
         indice compuesto (lat,lon) + scan por bbox).
-    [ ] Triaje de primeros auxilios offline: guias + TTS +
+    [x] Triaje de primeros auxilios offline: guias + TTS +
         metronomo 100-120 BPM (Timer + FlutterTts).
 
   FASE 5 - DISPARADORES HARDWARE
-    [ ] Pánico 0-clic MVP: Volumen DOWN x3 (KeyEvent), canal
+    [x] Pánico 0-clic MVP: Volumen DOWN x3 (KeyEvent), canal
         nativo si hace falta. -> Boton de ENCENDIDO x5: DESCARTADO
         (no accesible de forma fiable via SDK; AccessibilityService
         fragil y matado por OEMs).
     [ ] SMS real al contacto (permiso SEND_SMS) - actual solo abre
-        la app de SMS.
+        la app de SMS (escalada SMS-primero, llamada como fallback).
 
   FASE 6 - RED MESH OFFLINE (en orden de implementacion)
-    [ ] 6a criptografia: PKI offline Ed25519/X25519 + E2EE AES-GCM
+    [x] 6a criptografia: PKI offline Ed25519/X25519 + E2EE AES-GCM
         + identidad = hash(pubkey) + TOFU por QR. PURA DART.
+        NOTA: pk Ed25519 y pk X25519 son independientes (misma semilla);
+        encryptForPeer recibe pk_x (X25519), nunca la pk Ed25519.
     [ ] 6a2 serializacion: esquema protobuf mesh_sync.proto
         (package:protobuf + protoc-gen-dart) o empaquetado
         binario manual. DECISION ABIERTA -> P11. PURA DART.
-    [ ] 6b gossip/CRDT: envelope(header claro + payload cifrado),
-        hash anti-bucles, TTL 15 saltos/24h, seen-table, deltas
-        por marcas de agua (HLC COMPLETO, nunca solo ms). PURA DART.
+    [x] 6b gossip/CRDT: envelope(header claro + payload cifrado),
+        hash anti-bucles, TTL decremental, seen-table SQLite,
+        deltas por marcas de agua. Verificacion firma Ed25519
+        antes de aplicar paquetes; desconocidos solo se retransmiten.
     [ ] 6c persistencia cifrada: sqflite_sqlcipher + TTL cleanup.
-    [ ] 6d transporte: nearby_connections (STRATEGY_P2P_CLUSTER,
-        bytes-only) + FGS SPECIAL_USE + exencion de bateria.
+    [x] 6d transporte: nearby_connections (STRATEGY_P2P_CLUSTER,
+        bytes-only) + handshake CRDT automatico al conectar.
     [ ] 6e pruebas de campo: 3-5 nodos, bridge por nodo con
         Internet a /api/sos.
 
@@ -323,6 +327,72 @@ AEGIS actua en tres fases temporales:
   - El toolchain protoc/protoc-gen-dart en Windows es un paso de
     setup adicional; si no se quiere, se opta por empaquetado
     binario manual (P11).
+
+--------------------------------------------------------------
+ 10. BUGS CORREGIDOS (2026-08-21)
+--------------------------------------------------------------
+  CRITICOS:
+  [x] Login de coaccion destruia credenciales (login_screen.dart):
+      el flujo caia a saveConfig() guardando el codigo de coaccion
+      como contrasena real del servidor. Ahora return inmediato y
+      navega sin tocar las credenciales (usa ApiConfig.password).
+
+  [x] Notificaciones de emergencia silenciadas para siempre
+      (notification_service.dart): la dedup era permanente por
+      sesion — un segundo panico o dead-man nunca notificaba.
+      Ahora usa ventana temporal de 45 s con eviccion de entradas.
+
+  [x] Mesh E2EE roto (aegis_mesh_crypto_service.dart): se usaban
+      claves publicas Ed25519 como X25519 (no son intercambiables).
+      Ahora la identidad/QR incluye pk_x (X25519) separado y
+      encryptForPeer valida los 32 bytes del destinatario.
+
+  [x] Paquetes mesh sin verificar firma (aegis_mesh_transport_service
+      .dart): cualquiera podia inyectar CRDT/SOS falsos. Ahora se
+      verifica firma Ed25519 contra peers TOFU antes de aplicar;
+      desconocidos solo se retransmiten.
+
+  ALTOS:
+  [x] GPS borraba batteryLevel en cada fix del stream (gps_service
+      .dart) — preservado con copyWith.
+  [x] Heartbeat enviaba coordenadas obsoletas en segundo plano
+      (emergency_service.dart) — ahora usa _freshSnapshot().
+  [x] Alerta temprana ignoraba configuracion: intervalo fijo a
+      10 min y arrancaba aunque estuviera desactivada
+      (aegis_early_warning_service.dart).
+  [x] Caja negra corria timers aunque estuviera desactivada tras
+      reiniciar el proceso (aegis_black_box_service.dart).
+  [x] Dead-man quedaba bloqueado en estado "emergencia activa"
+      tras enviar SOS, suprimiendo detecciones futuras.
+  [x] Escalada SMS+llamada simultanea: el marcador tapaba el
+      compositor SMS — ahora llamada solo si SMS falla
+      (emergency_service.dart).
+
+  MEDIOS/BAJOS:
+  [x] JWT en prefs en claro — migrado a Secure Storage con
+      migracion automatica (api_config.dart).
+  [x] Header Bearer con token vacio (cobalto_api_service.dart).
+  [x] Handler e2eMsg era no-op — ahora descifra y registra
+      (aegis_mesh_transport_service.dart).
+  [x] Geocerca perdia el intervalo custom al reiniciar;
+      restartMonitoring() lee el intervalo de prefs.
+  [x] Mapa no limpiaba marcadores stale: updatePoints([]) siempre
+      se llama (map_tab.dart).
+  [x] Fallback prefs de geocercas devuelvia ciphertext — ahora
+      usa jsonDecode directo (geofence_service.dart).
+  [x] Kit de emergencia alertaba en la primera instalacion — ahora
+      programa el primer recordatorio sin notificar
+      (aegis_emergency_kit_service.dart).
+  [x] Semilla mesh con doble prefijo legacy (ENCv2:ENCv2:) — la
+      carga detecta y elimina el prefijo extra.
+  [x] Tests: mocks de SecureStorage/prefs anadidos y test flaky
+      de ZeroClick corregido (Future sin await).
+
+  PENDIENTE FUERA DE ALCANCE (requiere UI/product):
+  [ ] No existe UI para crear POIs de supervivencia (createMarker
+      sin llamadores en aegis_survival_map_service.dart).
+  [ ] La clave de transporte de caja negra nunca se provisiona a
+      la base (setTransportKey sin UI).
 
 ================================================================
  FIN DE DOCUMENTO - Actualizar al cerrar cada fase / evaluacion

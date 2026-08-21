@@ -111,16 +111,19 @@ class AegisEmergencyKitService {
   /// legible (próxima revisión) para mostrar en la UI.
   static Future<String> checkAndSchedule() async {
     final next = await nextReminderDate();
-    final due = next == null || !DateTime.now().isBefore(next);
 
-    if (due) {
+    // Primera instalación: programar sin notificar (evita alerta al día 0).
+    if (next == null) {
+      await _scheduleNext();
+    } else if (!DateTime.now().isBefore(next)) {
+      final dayKey = DateTime.now().toIso8601String().substring(0, 10);
       await NotificationService.showAlertNotification(
         title: '🎒 MANTENIMIENTO DEL KIT DE EMERGENCIA',
         body: 'Han pasado ${await reminderIntervalMonths()} meses '
             'desde la última revisión. Reemplace el agua y las baterías '
             'del kit de supervivencia.',
         level: 'MEDIA',
-        deduplicationKey: 'aegis|kit|reminder',
+        deduplicationKey: 'aegis|kit|reminder|$dayKey',
       );
       await _scheduleNext();
     }

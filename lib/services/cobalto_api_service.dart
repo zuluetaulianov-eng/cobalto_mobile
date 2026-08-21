@@ -19,7 +19,8 @@ class CobaltoApiService {
   static Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        if (ApiConfig.authToken != null) 'Authorization': 'Bearer ${ApiConfig.authToken}',
+        if (ApiConfig.authToken != null && ApiConfig.authToken!.isNotEmpty)
+          'Authorization': 'Bearer ${ApiConfig.authToken}',
       };
 
   static Future<Map<String, dynamic>> login(String username, String password) async {

@@ -11,7 +11,9 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   static bool _isInitialized = false;
-  static final Set<String> _sentAlertKeys = {};
+  /// Dedup con ventana temporal (evita silenciar un 2.º pánico/SOS en la misma sesión).
+  static final Map<String, DateTime> _sentAlertKeys = {};
+  static const Duration _dedupWindow = Duration(seconds: 45);
 
   /// Callback de acciones de notificación (configurado al arrancar desde
   /// main.dart). Evita dependencias circulares con servicios AEGIS.
@@ -72,14 +74,22 @@ class NotificationService {
     await init();
 
     final key = deduplicationKey ?? '$title|$body';
-    if (_sentAlertKeys.contains(key)) {
-      return; // Prevenir notificaciones duplicadas idénticas
+    final now = DateTime.now();
+    final last = _sentAlertKeys[key];
+    if (last != null && now.difference(last) < _dedupWindow) {
+      return; // Misma alerta reciente: evitar spam
     }
-    _sentAlertKeys.add(key);
+    _sentAlertKeys[key] = now;
 
-    // Mantener historial de claves acotado
+    // Evictar entradas antiguas (historial acotado)
     if (_sentAlertKeys.length > 100) {
-      _sentAlertKeys.remove(_sentAlertKeys.first);
+      final cutoff = now.subtract(_dedupWindow);
+      _sentAlertKeys.removeWhere((_, t) => t.isBefore(cutoff));
+      if (_sentAlertKeys.length > 100) {
+        final oldest = _sentAlertKeys.entries
+            .reduce((a, b) => a.value.isBefore(b.value) ? a : b);
+        _sentAlertKeys.remove(oldest.key);
+      }
     }
 
     final int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);

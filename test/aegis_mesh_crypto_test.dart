@@ -1,12 +1,18 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cobalto_mobile/services/aegis_mesh_crypto_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Tests unitarios — Fase 6a (PKI offline & E2EE Criptografía Mesh)
 ///
 /// TODOS puro Dart: validan las funciones criptográficas y el contrato de identidad.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
+    AegisMeshCryptoService.clearCache();
+  });
 
   group('AegisMeshCryptoService — Identidad & Firmas Ed25519', () {
     tearDown(() {

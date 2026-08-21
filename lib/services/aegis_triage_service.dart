@@ -40,7 +40,6 @@ class TriageOption {
 ///  - 100% offline: ningún protocolo depende de conectividad.
 class AegisTriageService {
   static const String _ttsEnabledKey = 'aegis_triage_tts_enabled';
-  static const String _metronomeRunningKey = 'aegis_triage_metro_running';
 
   // Metrónomo: 110 BPM nominal (rango 100-120 según AHA).
   static const int _bpmNominal = 110;

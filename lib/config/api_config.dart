@@ -40,10 +40,17 @@ class ApiConfig {
       await prefs.remove('password');
     }
 
+    // Migración: JWT desde prefs en claro hacia Secure Storage.
+    final legacyToken = prefs.getString('auth_token');
+    if (legacyToken != null && legacyToken.isNotEmpty) {
+      await _storage.write(key: 'auth_token', value: legacyToken);
+      await prefs.remove('auth_token');
+    }
+
     baseUrl = prefs.getString('base_url') ?? defaultBaseUrl;
     username = prefs.getString('username') ?? defaultUsername;
     password = await _storage.read(key: 'password') ?? defaultPassword;
-    authToken = prefs.getString('auth_token');
+    authToken = await _storage.read(key: 'auth_token');
     backgroundSync = prefs.getBool('background_sync') ?? true;
     wifiOnly = prefs.getBool('wifi_only') ?? false;
     syncInterval = prefs.getInt('sync_interval') ?? 15;
@@ -58,7 +65,12 @@ class ApiConfig {
     password = newPassword;
     if (token != null) {
       authToken = token;
-      await prefs.setString('auth_token', token);
+      if (token.isNotEmpty) {
+        await _storage.write(key: 'auth_token', value: token);
+      } else {
+        await _storage.delete(key: 'auth_token');
+      }
+      await prefs.remove('auth_token');
     }
     await prefs.setString('base_url', baseUrl);
     await prefs.setString('username', username);
@@ -90,10 +102,12 @@ class ApiConfig {
   static Future<void> setAuthToken(String? token) async {
     final prefs = await SharedPreferences.getInstance();
     authToken = token;
+    // JWT solo en Secure Storage (nunca en prefs en claro).
+    await prefs.remove('auth_token');
     if (token != null && token.isNotEmpty) {
-      await prefs.setString('auth_token', token);
+      await _storage.write(key: 'auth_token', value: token);
     } else {
-      await prefs.remove('auth_token');
+      await _storage.delete(key: 'auth_token');
     }
   }
 }

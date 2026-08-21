@@ -147,10 +147,9 @@ class _MapTabState extends State<MapTab> {
     newCounts['SURVIVAL_POI'] =
         dynamicPoints.where((p) => p['type'] == 'SURVIVAL_POI').length;
 
-    if (dynamicPoints.isNotEmpty) {
-      final jsonStr = json.encode(dynamicPoints);
-      await _controller.runJavaScript('updatePoints($jsonStr);');
-    }
+    // Siempre actualizar (incluso lista vacía) para limpiar marcadores stale.
+    final jsonStr = json.encode(dynamicPoints);
+    await _controller.runJavaScript('updatePoints($jsonStr);');
 
     if (mounted) {
       setState(() {

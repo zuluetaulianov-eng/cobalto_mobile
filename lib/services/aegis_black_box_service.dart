@@ -349,6 +349,13 @@ class AegisBlackBoxService {
   static Future<void> startMonitoring() async {
     _photoTimer?.cancel();
     _packageTimer?.cancel();
+    _photoTimer = null;
+    _packageTimer = null;
+
+    if (!await isEnabled()) {
+      debugPrint('📦 Caja Negra AEGIS desactivada; monitoreo no iniciado.');
+      return;
+    }
 
     final int photoMin = await photoIntervalMinutes();
     final int packageMin = await packageIntervalMinutes();

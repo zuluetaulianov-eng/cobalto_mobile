@@ -361,6 +361,42 @@ class AegisMeshTransportService {
   static Future<void> processIncomingPacket(AegisMeshPacket packet) async {
     await ensureTable();
 
+    // 0. Verificar firma Ed25519 antes de cualquier despacho (anti-inyección).
+    //    El relay ciego reenvía bytes sin descifrar, pero NO aplica CRDT/SOS
+    //    sin firma válida de un peer TOFU conocido.
+    final peer = await AegisMeshCryptoService.findPeer(packet.srcNodeId);
+    if (peer == null) {
+      // Desconocido: se permite retransmitir (flooding) pero no se aplica localmente.
+      AppLogger.warn(
+        'Paquete mesh de src desconocido ${packet.srcNodeId.substring(0, 8)}... — solo relay.',
+        tag: 'MeshTransport',
+      );
+    } else if (packet.signature.isNotEmpty) {
+      try {
+        final bytesToVerify = utf8.encode(
+          '${packet.id}|${packet.dstNodeId}|${packet.type.code}|${packet.payload}',
+        );
+        final ok = await AegisMeshCryptoService.verify(
+          message: bytesToVerify,
+          signatureBytes: base64.decode(packet.signature),
+          publicKeyBase64: peer.publicKeyBase64,
+        );
+        if (!ok) {
+          AppLogger.warn(
+            'Firma mesh inválida de ${packet.srcNodeId.substring(0, 8)}... — descartado.',
+            tag: 'MeshTransport',
+          );
+          return;
+        }
+      } catch (e) {
+        AppLogger.warn('Error verificando firma mesh.', tag: 'MeshTransport', error: e);
+        return;
+      }
+    } else {
+      AppLogger.warn('Paquete mesh sin firma — descartado.', tag: 'MeshTransport');
+      return;
+    }
+
     // 1. Comprobar deduplicación local
     final isNew = await _storePacketLocally(packet);
     if (!isNew) {
@@ -376,8 +412,8 @@ class AegisMeshTransportService {
     final identity = await AegisMeshCryptoService.getOrCreateIdentity();
     final bool isForMe = packet.dstNodeId == '*' || packet.dstNodeId == identity.nodeId;
 
-    // 2. Despachar a la aplicación si es para este nodo
-    if (isForMe) {
+    // 2. Despachar a la aplicación solo si es para este nodo Y el peer es de confianza.
+    if (isForMe && peer != null) {
       _incomingPacketController.add(packet);
       await _handleInternalPacket(packet);
     }
@@ -447,7 +483,22 @@ class AegisMeshTransportService {
         break;
 
       case AegisMeshPacketType.e2eMsg:
-        // Mensaje privado E2EE: descifrar con AegisMeshCryptoService si es para este nodo
+        // Mensaje privado E2EE: descifrar y registrar (UI puede escuchar incomingPackets).
+        try {
+          if (packet.payload.startsWith('E2E:')) {
+            final plain = await AegisMeshCryptoService.decryptFromPeer(packet.payload);
+            await LocalDbService.logEmergencyEvent(
+              'AEGIS_MESH_E2E_MSG',
+              data: {
+                'from': packet.srcNodeId,
+                'plaintext': plain,
+                'ts': packet.timestampMs,
+              },
+            );
+          }
+        } catch (e) {
+          AppLogger.warn('No se pudo descifrar E2E mesh.', tag: 'MeshTransport', error: e);
+        }
         break;
     }
   }

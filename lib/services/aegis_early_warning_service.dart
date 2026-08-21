@@ -93,6 +93,11 @@ class AegisEarlyWarningService {
   static Future<void> setEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_enabledKey, enabled);
+    if (enabled) {
+      await startMonitoring();
+    } else {
+      stopMonitoring();
+    }
   }
 
   static Future<double> radiusKm() async {
@@ -123,6 +128,9 @@ class AegisEarlyWarningService {
   static Future<void> setPollMinutes(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_pollMinutesKey, minutes);
+    if (_monitorTimer != null) {
+      await startMonitoring();
+    }
   }
 
   // ── ALGORITMO P/S (ONDAS SÍSMICAS) ──
@@ -413,13 +421,20 @@ class AegisEarlyWarningService {
 
   /// Arranca el monitoreo periódico de alerta temprana (best-effort). El primer
   /// ciclo se ejecuta pasado un corto retardo para dejar asentarse el GPS.
-  static void startMonitoring() {
+  static Future<void> startMonitoring() async {
     _monitorTimer?.cancel();
-    _monitorTimer = Timer.periodic(Duration(minutes: 10), (_) {
+    _monitorTimer = null;
+    if (!await isEnabled()) {
+      debugPrint('🌋 Alerta temprana desactivada; monitoreo no iniciado.');
+      return;
+    }
+    final mins = await pollMinutes();
+    final interval = mins <= 0 ? 10 : mins;
+    _monitorTimer = Timer.periodic(Duration(minutes: interval), (_) {
       unawaited(pollNow());
     });
     Timer(const Duration(seconds: 3), () => unawaited(pollNow()));
-    debugPrint('🌋 Monitoreo de alerta temprana sismica iniciado.');
+    debugPrint('🌋 Monitoreo de alerta temprana sismica iniciado (c/$interval min).');
   }
 
   static void stopMonitoring() {

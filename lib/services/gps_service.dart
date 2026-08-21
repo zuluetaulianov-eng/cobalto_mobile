@@ -172,7 +172,9 @@ class GpsService {
         ),
       );
       _lastKnownPosition = initial;
-      telemetry.value = TacticalSnapshot.fromPosition(initial);
+      final prevBatt = telemetry.value?.batteryLevel;
+      telemetry.value = TacticalSnapshot.fromPosition(initial)
+          .copyWith(batteryLevel: prevBatt);
 
       _streamSub = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
@@ -182,7 +184,9 @@ class GpsService {
       ).listen(
         (position) {
           _lastKnownPosition = position;
-          telemetry.value = TacticalSnapshot.fromPosition(position);
+          final prev = telemetry.value;
+          telemetry.value = TacticalSnapshot.fromPosition(position)
+              .copyWith(batteryLevel: prev?.batteryLevel);
         },
         onError: (Object e) =>
             debugPrint('⚠️ Error en stream de telemetría GPS: $e'),

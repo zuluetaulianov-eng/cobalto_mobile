@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:sqflite/sqflite.dart';
-
 import 'app_logger.dart';
 import 'gps_service.dart';
 import 'local_db_service.dart';
@@ -10,6 +8,7 @@ import 'local_db_service.dart';
 enum SurvivalPoiType {
   hospital,
   agua,
+  // ignore: constant_identifier_names — nombre persistido en SQLite/CRDT
   carretera_bloqueada,
   escombros,
   refugio,
@@ -168,7 +167,7 @@ class SurvivalMarker {
 /// y se expondrán al mesh en la Fase 6b.
 class AegisSurvivalMapService {
   static const String _table = 'map_markers';
-  static const String _watermarkKey = 'aegis_survival_map_watermarks';
+  // Watermarks por peer se manejan vía localWatermark()/getDeltaSince (sin prefs legacy).
 
   // ── HLC (Hybrid Logical Clock) ──
 

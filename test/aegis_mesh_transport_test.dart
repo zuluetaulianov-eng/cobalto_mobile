@@ -1,7 +1,7 @@
-import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cobalto_mobile/services/aegis_mesh_crypto_service.dart';
 import 'package:cobalto_mobile/services/aegis_mesh_transport_service.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Tests unitarios — Fase 6b (Red Mesh de Transporte Ciego)
 ///
@@ -9,6 +9,11 @@ import 'package:cobalto_mobile/services/aegis_mesh_transport_service.dart';
 /// decremento de TTL y serialización de red.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
+    AegisMeshCryptoService.clearCache();
+  });
 
   group('AegisMeshPacket & Transport — Lógica del Protocolo Mesh', () {
     tearDown(() {

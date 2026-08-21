@@ -118,7 +118,8 @@ class EmergencyService extends ChangeNotifier {
   }
 
   Future<void> _publishHeartbeat() async {
-    final TacticalSnapshot? snapshot = GpsService.lastSnapshot;
+    // En segundo plano el stream GPS puede estar suspendido: forzar fix fresco.
+    final TacticalSnapshot? snapshot = await _freshSnapshot();
     final int battery = AegisBatteryService.lastLevel ?? snapshot?.batteryLevel ?? 100;
     final String rawUsername = ApiConfig.username.trim();
     final String opName = rawUsername.isNotEmpty ? rawUsername : 'Operador Terreno';
@@ -133,7 +134,7 @@ class EmergencyService extends ChangeNotifier {
       'altitude': snapshot?.altitudeM ?? 0.0,
       'battery_level': battery,
       'status': _alarmActive ? 'SOS' : 'PATROL',
-      'network_type': '4G',
+      'network_type': 'unknown',
       'device_model': 'Cobalto Mobile',
       'unit_group': 'ALPHA',
     };
@@ -284,6 +285,9 @@ class EmergencyService extends ChangeNotifier {
 
     await LocalDbService.logEmergencyEvent('ESCALADA_AL_CONTACTO', data: {'phone': contact});
 
+    // Preferir SMS (mensaje con coords). La llamada se abre solo si SMS falla,
+    // para no tapar el compositor SMS con el marcador.
+    var smsOpened = false;
     try {
       final smsUri = Uri(
         scheme: 'sms',
@@ -291,19 +295,21 @@ class EmergencyService extends ChangeNotifier {
         queryParameters: {'body': message},
       );
       if (await canLaunchUrl(smsUri)) {
-        await launchUrl(smsUri, mode: LaunchMode.externalApplication);
+        smsOpened = await launchUrl(smsUri, mode: LaunchMode.externalApplication);
       }
     } catch (e) {
       AppLogger.warn('No se pudo abrir SMS de emergencia.', tag: 'Emergency', error: e);
     }
 
-    try {
-      final telUri = Uri(scheme: 'tel', path: contact);
-      if (await canLaunchUrl(telUri)) {
-        await launchUrl(telUri, mode: LaunchMode.externalApplication);
+    if (!smsOpened) {
+      try {
+        final telUri = Uri(scheme: 'tel', path: contact);
+        if (await canLaunchUrl(telUri)) {
+          await launchUrl(telUri, mode: LaunchMode.externalApplication);
+        }
+      } catch (e) {
+        AppLogger.warn('No se pudo abrir la llamada de emergencia.', tag: 'Emergency', error: e);
       }
-    } catch (e) {
-      AppLogger.warn('No se pudo abrir la llamada de emergencia.', tag: 'Emergency', error: e);
     }
   }
 

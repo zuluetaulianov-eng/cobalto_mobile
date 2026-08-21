@@ -108,18 +108,24 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         final isDuress = await LocalAuthService.hasDuressCode() &&
             await LocalAuthService.verifyDuress(pass);
         if (isDuress) {
+          // Coacción: SOS silencioso y entrada aparente normal.
+          // NUNCA guardar el código de coacción como contraseña del servidor.
           unawaited(EmergencyService().triggerDuress());
-          setState(() {
-            _isLoggingIn = false;
-            _errorMsg = '';
-          });
-        } else {
-          setState(() {
-            _isLoggingIn = false;
-            _errorMsg = 'Credenciales incorrectas. Verifique usuario y contraseña.';
-          });
+          if (url.isNotEmpty) {
+            await ApiConfig.saveConfig(url, user, ApiConfig.password);
+          }
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+            );
+          }
           return;
         }
+        setState(() {
+          _isLoggingIn = false;
+          _errorMsg = 'Credenciales incorrectas. Verifique usuario y contraseña.';
+        });
+        return;
       }
     }
 

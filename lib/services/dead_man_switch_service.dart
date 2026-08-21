@@ -312,6 +312,13 @@ class DeadManSwitchService extends ChangeNotifier {
         '${lat != 0.0 ? '$lat, $lon' : 'no disponibles'} ($_emergencyLabel).',
       );
     }
+
+    // Liberar estado local del dead-man para permitir re-armado; la alarma
+    // visual del EmergencyService permanece hasta cancelación manual.
+    _isEmergencyAlertActive = false;
+    _emergencyLabel = '';
+    _countdownSeconds = emergencyCountdownSeconds;
+    notifyListeners();
   }
 
   /// Cancela manualmente la alerta de emergencia (Operador Consciente).

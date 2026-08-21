@@ -13,8 +13,12 @@ class AegisMeshIdentity {
   /// ID público del nodo = SHA-256(clave pública Ed25519) hex.
   final String nodeId;
 
-  /// Clave pública Ed25519 (32 bytes, serializada en base64).
+  /// Clave pública Ed25519 (32 bytes, serializada en base64) — firmas.
   final String publicKeyBase64;
+
+  /// Clave pública X25519 (32 bytes, base64) — ECDH/E2EE.
+  /// Derivada de la misma semilla; NO es intercambiable con Ed25519.
+  final String x25519PublicKeyBase64;
 
   /// Huella legible para TOFU (primeros 8 bytes del nodeId en mayúsculas).
   String get fingerprint =>
@@ -26,6 +30,7 @@ class AegisMeshIdentity {
   const AegisMeshIdentity({
     required this.nodeId,
     required this.publicKeyBase64,
+    required this.x25519PublicKeyBase64,
   });
 
   @override
@@ -35,13 +40,17 @@ class AegisMeshIdentity {
 /// Par de contacto de confianza (TOFU).
 class AegisTrustedPeer {
   final String nodeId;
+  /// Clave pública Ed25519 (firmas).
   final String publicKeyBase64;
+  /// Clave pública X25519 (E2EE). Vacía en peers legacy sin pk_x.
+  final String x25519PublicKeyBase64;
   final String alias; // Nombre legible (puede ser vacío).
   final DateTime trustedSince;
 
   const AegisTrustedPeer({
     required this.nodeId,
     required this.publicKeyBase64,
+    this.x25519PublicKeyBase64 = '',
     required this.alias,
     required this.trustedSince,
   });
@@ -49,6 +58,7 @@ class AegisTrustedPeer {
   Map<String, dynamic> toJson() => {
         'node_id': nodeId,
         'public_key': publicKeyBase64,
+        'public_key_x25519': x25519PublicKeyBase64,
         'alias': alias,
         'trusted_since': trustedSince.toIso8601String(),
       };
@@ -56,6 +66,7 @@ class AegisTrustedPeer {
   factory AegisTrustedPeer.fromJson(Map<String, dynamic> json) => AegisTrustedPeer(
         nodeId: json['node_id'] as String,
         publicKeyBase64: json['public_key'] as String,
+        x25519PublicKeyBase64: json['public_key_x25519'] as String? ?? '',
         alias: json['alias'] as String? ?? '',
         trustedSince: DateTime.tryParse(json['trusted_since'] as String? ?? '') ?? DateTime.now(),
       );
@@ -117,39 +128,42 @@ class AegisMeshCryptoService {
     final nodeId = await _sha256Hex(pubKeyBytes);
     final pubKeyBase64 = base64.encode(pubKeyBytes);
 
+    // Par X25519 independiente (misma semilla) — claves NO intercambiables con Ed25519.
+    final xKp = await _x25519.newKeyPairFromSeed(seed);
+    _cachedKeyPairX25519 = xKp;
+    final xPub = await xKp.extractPublicKey();
+    final xPubBase64 = base64.encode(xPub.bytes);
+
     _cachedIdentity = AegisMeshIdentity(
       nodeId: nodeId,
       publicKeyBase64: pubKeyBase64,
+      x25519PublicKeyBase64: xPubBase64,
     );
     AppLogger.info('Identidad mesh cargada: ${_cachedIdentity!.fingerprint}', tag: 'MeshCrypto');
     return _cachedIdentity!;
   }
 
-  /// Genera o recupera la semilla Ed25519 (32 bytes).
+  /// Genera o recupera la semilla Ed25519/X25519 (32 bytes).
   static Future<List<int>> _getOrCreateSeed() async {
     try {
       final stored = await _secureStorage.read(key: _seedAlias);
       if (stored != null && stored.isNotEmpty) {
-        // Descifrar con bóveda maestra.
         final clear = await CryptoVaultService.decryptText(stored);
-        if (clear.startsWith(_encPrefix)) {
-          // La propia bóveda ya decodificó; extraemos el base64 de la semilla.
-          // Nota: si decryptText ya quita el prefijo, ajustar aquí.
-          return base64.decode(clear.substring(_encPrefix.length));
-        }
-        // Intentar deserializar directamente (backward compat).
-        try {
-          return base64.decode(clear);
-        } catch (_) {}
+        // Formato actual: base64 crudo de 32 bytes.
+        // Legacy: 'ENCv2:' + base64 (doble prefijo accidental).
+        final payload = clear.startsWith(_encPrefix)
+            ? clear.substring(_encPrefix.length)
+            : clear;
+        final seed = base64.decode(payload);
+        if (seed.length == 32) return seed;
       }
     } catch (e) {
       AppLogger.warn('No se pudo recuperar la semilla mesh; generando nueva.', tag: 'MeshCrypto', error: e);
     }
 
-    // Generar nueva semilla segura.
+    // Generar nueva semilla segura y cifrar solo el base64 de la semilla.
     final seed = List<int>.generate(32, (_) => Random.secure().nextInt(256));
-    final seedBase64 = '$_encPrefix${base64.encode(seed)}';
-    final sealed = await CryptoVaultService.encryptText(seedBase64);
+    final sealed = await CryptoVaultService.encryptText(base64.encode(seed));
     try {
       await _secureStorage.write(key: _seedAlias, value: sealed);
     } catch (e) {
@@ -162,10 +176,7 @@ class AegisMeshCryptoService {
   /// Se usa para el acuerdo ECDH de la clave de sesión.
   static Future<SimpleKeyPair> _getX25519KeyPair() async {
     if (_cachedKeyPairX25519 != null) return _cachedKeyPairX25519!;
-    // Derivar el par X25519 a partir de la semilla Ed25519 (clamp + hash).
-    final seed = await _getOrCreateSeed();
-    // X25519 necesita 32 bytes; los primeros 32 bytes de la semilla son suficientes.
-    _cachedKeyPairX25519 = await _x25519.newKeyPairFromSeed(seed);
+    await getOrCreateIdentity(); // carga ambos pares
     return _cachedKeyPairX25519!;
   }
 
@@ -201,15 +212,18 @@ class AegisMeshCryptoService {
 
   // ── E2EE: ECDH → AES-GCM ──
 
-  /// Cifra [plaintext] para el destinatario con clave pública [recipientPubKeyBase64].
+  /// Cifra [plaintext] para el destinatario con clave pública **X25519** [recipientX25519PubKeyBase64].
   ///
-  /// Flujo: ECDH(local_X25519, recipient_X25519) → sharedSecret → AES-256-GCM(plaintext).
+  /// Flujo: ECDH(ephemeral_X25519, recipient_X25519) → sharedSecret → AES-256-GCM(plaintext).
   /// El payload se rellena a cubos de tamaño para anti-fingerprinting.
   ///
   /// Formato del sobre cifrado (bytes):
   ///   [32B ephemeral_pubkey][12B nonce][4B ciphertext_len][ciphertext+mac][padding]
   ///
   /// Retorna el sobre como base64 con prefijo `E2E:`.
+  ///
+  /// IMPORTANTE: pasar la clave X25519 del peer (`peer.x25519PublicKeyBase64`),
+  /// nunca la Ed25519 (`publicKeyBase64`).
   static Future<String> encryptForPeer({
     required String plaintext,
     required String recipientPubKeyBase64,
@@ -219,8 +233,13 @@ class AegisMeshCryptoService {
       final ephemeralKp = await _x25519.newKeyPair();
       final ephemeralPub = await ephemeralKp.extractPublicKey();
 
-      // 2. ECDH: secreto compartido.
+      // 2. ECDH: secreto compartido (recipient DEBE ser X25519).
       final recipientPubBytes = base64.decode(recipientPubKeyBase64);
+      if (recipientPubBytes.length != 32) {
+        throw ArgumentError(
+          'Clave X25519 del destinatario inválida (${recipientPubBytes.length} bytes).',
+        );
+      }
       final recipientPub = SimplePublicKey(recipientPubBytes, type: KeyPairType.x25519);
       final sharedSecret = await _x25519.sharedSecretKey(keyPair: ephemeralKp, remotePublicKey: recipientPub);
 
@@ -301,13 +320,14 @@ class AegisMeshCryptoService {
   // ── QR TOFU ──
 
   /// Genera el payload QR de presentación del nodo local.
-  /// Formato: JSON compacto con nodeId, pubKey, alias y timestamp.
+  /// Formato: JSON con nodeId, pk Ed25519, pk_x X25519, alias y timestamp.
   static Future<String> generateQrPayload({String alias = ''}) async {
     final identity = await getOrCreateIdentity();
     return json.encode({
       'v': 1,
       'nid': identity.nodeId,
       'pk': identity.publicKeyBase64,
+      'pk_x': identity.x25519PublicKeyBase64,
       'alias': alias,
       'ts': DateTime.now().toUtc().millisecondsSinceEpoch,
     });
@@ -327,7 +347,7 @@ class AegisMeshCryptoService {
       final pubKeyBase64 = data['pk'] as String?;
       if (nodeId == null || pubKeyBase64 == null) return null;
 
-      // Verificar que nodeId = SHA-256(pubKey).
+      // Verificar que nodeId = SHA-256(pubKey Ed25519).
       final pubKeyBytes = base64.decode(pubKeyBase64);
       final expectedId = await _sha256Hex(pubKeyBytes);
       if (expectedId != nodeId) {
@@ -335,9 +355,12 @@ class AegisMeshCryptoService {
         return null;
       }
 
+      final pkX = data['pk_x'] as String? ?? '';
+
       return AegisTrustedPeer(
         nodeId: nodeId,
         publicKeyBase64: pubKeyBase64,
+        x25519PublicKeyBase64: pkX,
         alias: data['alias'] as String? ?? '',
         trustedSince: DateTime.now().toUtc(),
       );
@@ -441,6 +464,7 @@ class AegisMeshCryptoService {
       'node_id': identity.nodeId,
       'fingerprint': identity.fingerprint,
       'public_key': identity.publicKeyBase64,
+      'public_key_x25519': identity.x25519PublicKeyBase64,
     };
   }
 

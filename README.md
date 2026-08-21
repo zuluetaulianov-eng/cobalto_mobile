@@ -30,6 +30,7 @@ graph TD
     L --> M["✅ Fase 8: Blue Force Tracking (BFT) & Telemetría HUB"]
     M --> N["✅ Fase 9: AEGIS — Red Mesh P2P Offline (BLE + Wi-Fi Direct)"]
     N --> O["✅ Fase 10: AEGIS E2EE/TOFU — Cifrado de Extremo a Extremo en Mesh"]
+    O --> P["✅ Fase 11: Autodescubrimiento LAN UDP + Status Chip LAN & BFT Sync"]
 ```
 
 ---
@@ -82,6 +83,11 @@ graph TD
 - **E2EE/TOFU**: cada par de dispositivos establece un canal cifrado de extremo a extremo con verificación de identidad **Trust On First Use** — sin servidor de llaves centralizado.
 - **Resiliencia de emergencia**: si el canal BFT→HUB cae, AEGIS actúa como red de respaldo garantizando la entrega de señales SOS y datos críticos entre operadores.
 - Implementado sobre el paquete `nearby_connections` (Google Nearby Connections API).
+
+### 11. 📶 Autodescubrimiento LAN Zero-Conf & Status Chip Interactivo (`NetworkDiscoveryService`)
+- **Autodescubrimiento Dual de 2 Capas**: Emite una sonda UDP Broadcast (puerto 8084) táctica con fallback a escaneo ultrarrápido de subred HTTP para enlazar automáticamente el teléfono con el HUB PC en < 1 segundo.
+- **Chip de Enlace LAN Táctico (`_StatusStrip`)**: Muestra `🟢 HUB: IP` o `📱 AUTÓNOMO` en vivo con un botón de toque rápido para re-escaneos inmediatos y retroalimentación háptica.
+- **Búsqueda Táctica en Cajón (`_AppDrawer`)**: Filtro de búsqueda en vivo dentro del menú lateral de 9 módulos para acceso instantáneo.
 
 ---
 

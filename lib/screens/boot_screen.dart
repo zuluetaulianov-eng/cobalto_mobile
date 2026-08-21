@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
 import '../services/cobalto_api_service.dart';
@@ -47,65 +49,55 @@ class _BootScreenState extends State<BootScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _runBootSequence() async {
-    await Future.delayed(const Duration(milliseconds: 400));
     _addLog('[+] CARGANDO PARÁMETROS LOCALES DE CONFIGURACIÓN...');
     await ApiConfig.loadConfig();
 
-    await Future.delayed(const Duration(milliseconds: 500));
-    _addLog('[+] VERIFICANDO ENLACE CON SERVIDOR CENTRAL (SI DISPONIBLE)...');
+    _addLog('[+] MODOS Y SERVICIOS TÁCTICOS ACTIVADOS.');
 
-    bool isOk = await CobaltoApiService.testConnection();
+    // Inicializar servicios en paralelo de forma asíncrona sin bloquear la pantalla
+    unawaited(_initBackgroundServices());
 
-    if (isOk) {
-      await Future.delayed(const Duration(milliseconds: 400));
-      _addLog('[+] SALUD DEL SERVIDOR: [OK] — JWT SE SOLICITARÁ AL INGRESAR.');
-
-      final prefs = await SharedPreferences.getInstance();
-      final cachedStr = prefs.getString('cached_sitrep_news');
-
-      if (cachedStr == null || cachedStr.isEmpty || cachedStr == '[]') {
-        _addLog('[+] DETECTADO PRIMER ARRANQUE: PRECARGANDO SITREP INICIAL...');
-        await CobaltoApiService.fetchNews();
-      } else {
-        _addLog('[+] CACHÉ LOCAL DISPONIBLE. MODO DE CARGA ULTRA-RÁPIDO ACTIVADO.');
-      }
-    } else {
-      _addLog('[-] SERVIDOR NO DISPONIBLE: MODO AUTÓNOMO LOCAL.');
-    }
-
-    await Future.delayed(const Duration(milliseconds: 400));
-    _addLog('[+] INICIALIZANDO MÓDULOS DE INTELIGENCIA Y TELEMETRÍA...');
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    // Reactivar monitoreo de geocercas si estaba activado previamente.
-    final geoMonitoring = await GeofenceService.isMonitoringEnabled();
-    if (geoMonitoring) {
-      final interval = await GeofenceService.getMonitoringIntervalSeconds();
-      _addLog('[+] GEOCERCAS: MONITOREO TÁCTICO REACTIVADO (${interval}s).');
-      GeofenceService.startMonitoring(intervalSeconds: interval);
-    }
-
-    // Reactivar el Monitor de Hombre Muerto/Inmovilizado si estaba activado.
-    await DeadManSwitchService().initFromPrefs();
-    if (DeadManSwitchService().isActive) {
-      _addLog('[+] HOMBRE MUERTO: VIGILANCIA TÁCTICA REACTIVADA.');
-    }
-
-    // Configuración del plan de emergencia (contacto y heartbeat beacon).
-    await EmergencyService().initFromPrefs();
-    if (EmergencyService.isHeartbeatRunning) {
-      _addLog('[+] HEARTBEAT: TRANSMISIÓN DE TELEMETRÍA ACTIVA.');
-    }
-
-    // Reintenta subidas de evidencia fotográfica y señales SOS sin enlace.
-    await TelemetrySyncService.retryPending();
-    await TelemetrySyncService.retryPendingSos();
-
-    // El login (local o contra servidor) siempre es la puerta de entrada.
+    // Transición ultra-rápida a la pantalla de login (150ms)
+    await Future.delayed(const Duration(milliseconds: 150));
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
+    }
+  }
+
+  Future<void> _initBackgroundServices() async {
+    try {
+      // 1. Verificación no bloqueante de conexión al servidor
+      CobaltoApiService.testConnection().then((isOk) {
+        if (isOk) {
+          SharedPreferences.getInstance().then((prefs) {
+            final cachedStr = prefs.getString('cached_sitrep_news');
+            if (cachedStr == null || cachedStr.isEmpty || cachedStr == '[]') {
+              CobaltoApiService.fetchNews();
+            }
+          });
+        }
+      });
+
+      // 2. Reactivar geocercas
+      final geoMonitoring = await GeofenceService.isMonitoringEnabled();
+      if (geoMonitoring) {
+        final interval = await GeofenceService.getMonitoringIntervalSeconds();
+        GeofenceService.startMonitoring(intervalSeconds: interval);
+      }
+
+      // 3. Reactivar Hombre Muerto
+      await DeadManSwitchService().initFromPrefs();
+
+      // 4. Servicio de Emergencia & Heartbeat
+      await EmergencyService().initFromPrefs();
+
+      // 5. Reintentos de cola en segundo plano
+      await TelemetrySyncService.retryPending();
+      await TelemetrySyncService.retryPendingSos();
+    } catch (_) {
+      // Manejo silencioso de servicios de fondo
     }
   }
 

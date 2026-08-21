@@ -13,6 +13,7 @@ import '../services/emergency_service.dart';
 import 'aegis_triage_screen.dart';
 import '../services/gps_service.dart';
 import '../services/local_auth_service.dart';
+import '../services/network_discovery_service.dart';
 import '../services/notification_service.dart';
 import '../services/settings_persistence_service.dart';
 import '../services/stealth_service.dart';
@@ -81,6 +82,8 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
   List<Map<String, dynamic>> _kitInventory = [];
   int _pendingBlackBox = 0;
 
+  bool _isDiscoveringLan = false;
+
   final List<String> _ollamaModels = [
     'llama3.2',
     'mistral',
@@ -89,6 +92,34 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
     'llama3.1',
     'codellama',
   ];
+
+  Future<void> _handleAutoDiscoveryLan() async {
+    setState(() => _isDiscoveringLan = true);
+    final result = await NetworkDiscoveryService.discoverHub(autoApply: true);
+    if (mounted) {
+      setState(() {
+        _isDiscoveringLan = false;
+        if (result.success && result.hubUrl != null) {
+          _urlController.text = result.hubUrl!;
+          _statusMessage = 'HUB localizado: ${result.hubUrl} (${result.discoveryMethod})';
+          _isConnected = true;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📡 ¡COBALTO HUB localizado en ${result.hubUrl}!'),
+              backgroundColor: const Color(0xFF00FFAA),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('⚠️ ${result.errorMessage}'),
+              backgroundColor: const Color(0xFFFF2D55),
+            ),
+          );
+        }
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -501,6 +532,34 @@ class _SettingsTabState extends State<SettingsTab> with SingleTickerProviderStat
           const SettingsSectionTitle('💻 DIRECCIÓN Y CREDENCIALES DE BASE (PC)'),
           const SizedBox(height: 6),
           SettingsTextField(_urlController, label: 'Dirección IP o Servidor Central', icon: Icons.link),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _isDiscoveringLan ? null : _handleAutoDiscoveryLan,
+              icon: _isDiscoveringLan
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00E5FF)),
+                    )
+                  : const Icon(Icons.radar, color: Color(0xFF00E5FF), size: 16),
+              label: Text(
+                _isDiscoveringLan ? 'BUSCANDO HUB PC EN LA RED...' : '🔍 ESCANEAR Y AUTO-DESCUBRIR HUB PC (LAN)',
+                style: const TextStyle(
+                  color: Color(0xFF00E5FF),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: const Color(0xFF00E5FF).withOpacity(0.4)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                backgroundColor: const Color(0xFF00E5FF).withOpacity(0.05),
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [

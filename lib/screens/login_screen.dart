@@ -5,6 +5,7 @@ import '../config/api_config.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/emergency_service.dart';
 import '../services/local_auth_service.dart';
+import '../services/network_discovery_service.dart';
 import 'main_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -23,6 +24,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   bool _isLoggingIn = false;
   bool _isCreateMode = false;
+  bool _isDiscovering = false;
   String _errorMsg = '';
 
   @override
@@ -63,6 +65,33 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _confirmPassController.dispose();
     _ringController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleAutoDiscovery() async {
+    setState(() {
+      _isDiscovering = true;
+      _errorMsg = '';
+    });
+
+    final result = await NetworkDiscoveryService.discoverHub(autoApply: true);
+
+    if (mounted) {
+      setState(() {
+        _isDiscovering = false;
+        if (result.success && result.hubUrl != null) {
+          _urlController.text = result.hubUrl!;
+          _errorMsg = '';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📡 HUB localizado: ${result.hubUrl} (${result.discoveryMethod})'),
+              backgroundColor: const Color(0xFF00FFAA),
+            ),
+          );
+        } else {
+          _errorMsg = '⚠️ ${result.errorMessage} Verifique la conexión Wi-Fi.';
+        }
+      });
+    }
   }
 
   Future<void> _handleLogin() async {
@@ -258,6 +287,35 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               const SizedBox(width: 6),
                               _buildPresetChip('💻 Localhost', ApiConfig.presetLocalhostUrl),
                             ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Botón de Autodescubrimiento Cero-Configuración
+                        OutlinedButton.icon(
+                          onPressed: _isDiscovering ? null : _handleAutoDiscovery,
+                          icon: _isDiscovering
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00E5FF)),
+                                )
+                              : const Icon(Icons.radar_outlined, color: Color(0xFF00E5FF), size: 16),
+                          label: Text(
+                            _isDiscovering ? 'BUSCANDO HUB PC EN LAN...' : '🔍 AUTO-DESCUBRIR HUB PC (LAN)',
+                            style: const TextStyle(
+                              color: Color(0xFF00E5FF),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'monospace',
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(color: const Color(0xFF00E5FF).withOpacity(0.4)),
+                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            backgroundColor: const Color(0xFF00E5FF).withOpacity(0.05),
                           ),
                         ),
                         const SizedBox(height: 14),

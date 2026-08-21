@@ -6,13 +6,13 @@
 [![Security](https://img.shields.io/badge/Security-AES--256--GCM%20%2B%20TOFU-30D158?style=for-the-badge)](https://github.com)
 [![AEGIS](https://img.shields.io/badge/AEGIS-Mesh%20P2P%20BLE%2FWiFi--Direct-FF6600?style=for-the-badge)](https://github.com)
 [![BFT](https://img.shields.io/badge/BFT-Blue%20Force%20Tracking-0066FF?style=for-the-badge)](https://github.com)
-[![Status](https://img.shields.io/badge/Status-v1.0.0%20RELEASE-00FFAA?style=for-the-badge)](https://github.com)
+[![Status](https://img.shields.io/badge/Status-v1.1.0%20RELEASE-00FFAA?style=for-the-badge)](https://github.com)
 
 **COBALTO MOBILE** es una plataforma autónoma de inteligencia táctica, OSINT y monitoreo situacional diseñada para dispositivos Android. Permite operar **independiente en el dispositivo (Offline / Air-Gapped)** realizando scraping e ingesta local de noticias, o en modo **Enlace Estación Base** sincronizándose con el ecosistema central de COBALTO HUB. En emergencias, opera sobre una **red mesh peer-to-peer cifrada (AEGIS)** sin infraestructura de red.
 
 ---
 
-## 🚀 Evolución Táctica Implementada — v1.0.0 RELEASE
+## 🚀 Evolución Táctica Implementada — v1.1.0 RELEASE
 
 ```mermaid
 graph TD
@@ -25,12 +25,15 @@ graph TD
     G --> H["✅ Capacidad Táctica: Dead Man's Switch (SOS)"]
     H --> I["⚡ Estabilización: Multi-Isolates & Anti-ANR"]
     I --> J["✅ Fase 6: Telemetría GPS en Vivo & HUD Cámara"]
-    J --> K["✅ Fase 7: Sistema de Emergencias Integral (Pánico/Duress/Heartbeat/Sirena)"]
+    J --> K["✅ Fase 7: Sistema de Emergencias Integral"]
     K --> L["⚡ Optimización: Ciclo de Vida & Navegación Responsiva"]
     L --> M["✅ Fase 8: Blue Force Tracking (BFT) & Telemetría HUB"]
-    M --> N["✅ Fase 9: AEGIS — Red Mesh P2P Offline (BLE + Wi-Fi Direct)"]
-    N --> O["✅ Fase 10: AEGIS E2EE/TOFU — Cifrado de Extremo a Extremo en Mesh"]
-    O --> P["✅ Fase 11: Autodescubrimiento LAN UDP + Status Chip LAN & BFT Sync"]
+    M --> N["✅ Fase 9: AEGIS — Red Mesh P2P Offline"]
+    N --> O["✅ Fase 10: AEGIS E2EE/TOFU — Cifrado Mesh"]
+    O --> P["✅ Fase 11: Autodescubrimiento LAN UDP + Status Chip"]
+    P --> Q["⚡ Fase 12: Arranque Instantáneo (< 150ms Cold-Start)"]
+    Q --> R["🧹 Fase 13: Higiene de Datos Global (TextSanitizer)"]
+    R --> S["🎙️ Fase 14: Voz Táctica Modulada (Pitch 0.92 + Prefijos)"]
 ```
 
 ---
@@ -88,6 +91,24 @@ graph TD
 - **Autodescubrimiento Dual de 2 Capas**: Emite una sonda UDP Broadcast (puerto 8084) táctica con fallback a escaneo ultrarrápido de subred HTTP para enlazar automáticamente el teléfono con el HUB PC en < 1 segundo.
 - **Chip de Enlace LAN Táctico (`_StatusStrip`)**: Muestra `🟢 HUB: IP` o `📱 AUTÓNOMO` en vivo con un botón de toque rápido para re-escaneos inmediatos y retroalimentación háptica.
 - **Búsqueda Táctica en Cajón (`_AppDrawer`)**: Filtro de búsqueda en vivo dentro del menú lateral de 9 módulos para acceso instantáneo.
+
+### 12. ⚡ Arquitectura de Arranque Instantáneo (< 150ms Cold-Start) (`BootScreen`, `main.dart`)
+- **Inicialización Asíncrona No Bloqueante**: Refactorización completa de `main()` y `BootScreen` para ejecutar `runApp()` de forma inmediata, eliminando esperas síncronas que provocaban pantallas negras al abrir la app.
+- **Carga Diferida de Servicios**: Los motores de GPS, Notificaciones, AEGIS Mesh y Telemetría inician en hilos asíncronos en segundo plano tras renderizar la interfaz.
+
+### 13. 🧹 Higiene de Datos Global & UI Limpia (`TextSanitizer`)
+- **Sanitización en Ingesta y Renderizado**: Purga automática de etiquetas HTML (`<p>`, `<div>`), entidades XML/HTML (`&quot;`, `&#8211;`), secuencias de escape Unicode (`\u00e1`), y fragmentos JSON sin parsear.
+- **Integración Transversal**: Aplicado a tarjetas SitRep, vista detallada de noticias, notificaciones de sistema Android, widget nativo de pantalla de inicio e infografías PNG HD.
+
+### 14. 🎙️ Motor de Voz Táctica C4I (`VoiceService`)
+- **Modulación Autoritaria**: Timbre autoritario tipo C4I (`Pitch 0.92`, `SpeechRate 0.50`) para una pronunciación militar pausada sobre cascos o entornos ruidosos.
+- **Introducciones Configurables**: Saludo de voz personalizable desde Ajustes (`Alerta COBALTO`, Directo al grano, por Nombre de Operador o Nivel de Amenaza).
+- **Extracto Ejecutivo de Audio**: Envoltura corta de audio (máximo 80 caracteres adicionales) para evitar lecturas infinitas de artículos extensos.
+- **Botón `🔊 ESCUCHAR`**: Lectura auditiva bajo demanda en las tarjetas de noticias.
+
+### 15. 🔋 Gestión Eficiente de Recursos en Segundo Plano (Zero-Overhead)
+- **Reutilización de Telemetría Compartida**: Si la posición GPS leída recientemente es fresca (≤45s), se reutiliza sin activar el hardware GPS.
+- **Deduplicación de Alertas**: Ventana de 45 segundos para evitar repetición auditiva continua del mismo incidente.
 
 ---
 
@@ -189,4 +210,4 @@ El instalador APK generado se ubicará en:
 ## 📄 Licencia y Seguridad
 Uso reservado para investigación OSINT, análisis situacional y gestión de inteligencia operacional.  
 **Desarrollado por el Ecosistema COBALTO HUB.**  
-**Versión:** 1.0.0 — Build Agosto 2026
+**Versión:** 1.1.0 — Build Agosto 2026

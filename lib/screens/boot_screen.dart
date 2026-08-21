@@ -2,11 +2,20 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../config/api_config.dart';
+import '../services/aegis_battery_service.dart';
+import '../services/aegis_black_box_service.dart';
+import '../services/aegis_checkin_service.dart';
+import '../services/aegis_early_warning_service.dart';
+import '../services/aegis_emergency_kit_service.dart';
 import '../services/cobalto_api_service.dart';
 import '../services/dead_man_switch_service.dart';
 import '../services/emergency_service.dart';
 import '../services/geofence_service.dart';
+import '../services/gps_service.dart';
+import '../services/notification_service.dart';
+import '../services/power_management_service.dart';
 import '../services/telemetry_sync_service.dart';
+import '../services/voice_service.dart';
 import 'login_screen.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,7 +77,23 @@ class _BootScreenState extends State<BootScreen> with SingleTickerProviderStateM
 
   Future<void> _initBackgroundServices() async {
     try {
-      // 1. Verificación no bloqueante de conexión al servidor
+      // 1. Notificaciones locales & acciones desde lockscreen
+      NotificationService.init().then((_) {
+        NotificationService.onCheckInAction = AegisCheckInService.checkIn;
+      });
+
+      // 2. Voz silenciosa & GPS tracking
+      VoiceService.loadSilentMode();
+      GpsService.startTracking();
+
+      // 3. Monitores AEGIS (Batería, Alerta temprana, Kit de emergencia)
+      AegisBatteryService.startMonitoring();
+      AegisEarlyWarningService.startMonitoring();
+      AegisEmergencyKitService.checkAndSchedule();
+      AegisBlackBoxService.startMonitoring();
+      PowerManagementService().attach();
+
+      // 4. Verificación no bloqueante de conexión al servidor Central
       CobaltoApiService.testConnection().then((isOk) {
         if (isOk) {
           SharedPreferences.getInstance().then((prefs) {
@@ -80,22 +105,23 @@ class _BootScreenState extends State<BootScreen> with SingleTickerProviderStateM
         }
       });
 
-      // 2. Reactivar geocercas
+      // 5. Reactivar geocercas
       final geoMonitoring = await GeofenceService.isMonitoringEnabled();
       if (geoMonitoring) {
         final interval = await GeofenceService.getMonitoringIntervalSeconds();
         GeofenceService.startMonitoring(intervalSeconds: interval);
       }
 
-      // 3. Reactivar Hombre Muerto
+      // 6. Reactivar Hombre Muerto
       await DeadManSwitchService().initFromPrefs();
 
-      // 4. Servicio de Emergencia & Heartbeat
+      // 7. Servicio de Emergencia & Heartbeat
       await EmergencyService().initFromPrefs();
 
-      // 5. Reintentos de cola en segundo plano
+      // 8. Reintentos de cola en segundo plano
       await TelemetrySyncService.retryPending();
       await TelemetrySyncService.retryPendingSos();
+      await AegisBlackBoxService.retryPending();
     } catch (_) {
       // Manejo silencioso de servicios de fondo
     }

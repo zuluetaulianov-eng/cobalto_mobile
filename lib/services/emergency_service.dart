@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -126,6 +127,8 @@ class EmergencyService extends ChangeNotifier {
     final String cleanCode = opName.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '').toUpperCase();
     final String opId = 'OP-${cleanCode.isEmpty ? "ALPHA-1" : cleanCode}';
 
+    final String osInfo = Platform.isAndroid ? 'Android Smartphone' : (Platform.isIOS ? 'iPhone Mobile' : 'Cobalto Terminal');
+
     final Map<String, dynamic> beat = {
       'operator_id': opId,
       'operator_name': opName,
@@ -134,8 +137,8 @@ class EmergencyService extends ChangeNotifier {
       'altitude': snapshot?.altitudeM ?? 0.0,
       'battery_level': battery,
       'status': _alarmActive ? 'SOS' : 'PATROL',
-      'network_type': 'unknown',
-      'device_model': 'Cobalto Mobile',
+      'network_type': 'Wi-Fi / Mobile Data',
+      'device_model': osInfo,
       'unit_group': 'ALPHA',
     };
     unawaited(CobaltoApiService.sendHeartbeat(beat));

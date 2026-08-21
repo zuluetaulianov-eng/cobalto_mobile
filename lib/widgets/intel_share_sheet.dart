@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/text_sanitizer.dart';
 import 'intel_card_generator_dialog.dart';
 
 /// Hoja inferior para difundir un reporte OSINT (ficha PNG, copiar enlace,
@@ -27,7 +28,8 @@ class IntelShareSheet extends StatelessWidget {
   }
 
   void _copyToClipboard(BuildContext context, String title, String? link) {
-    final textToCopy = link != null && link.isNotEmpty ? '$title\nFuente: $link' : title;
+    final cleanTitle = TextSanitizer.clean(title);
+    final textToCopy = link != null && link.isNotEmpty ? '$cleanTitle\nFuente: $link' : cleanTitle;
     Clipboard.setData(ClipboardData(text: textToCopy));
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -41,7 +43,7 @@ class IntelShareSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = item['title'] ?? 'Reporte COBALTO OSINT';
+    final title = TextSanitizer.clean(item['title']?.toString() ?? 'Reporte COBALTO OSINT');
     final link = item['link']?.toString() ?? '';
     final source = item['source'] ?? 'Intel Hub';
 

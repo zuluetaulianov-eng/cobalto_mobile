@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/text_sanitizer.dart';
+
 /// Temas visuales para la ficha de inteligencia.
 enum IntelCardTheme {
   cyberDark,
@@ -64,9 +66,9 @@ class IntelPreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = IntelCardPalette.forTheme(theme);
-    final title = newsItem['title'] ?? 'Sin título';
+    final title = TextSanitizer.clean(newsItem['title']?.toString() ?? 'Sin título');
     final source = newsItem['source'] ?? 'Intel Hub';
-    final summary = newsItem['summary'] ?? newsItem['text'] ?? '';
+    final summary = TextSanitizer.clean((newsItem['summary'] ?? newsItem['text'] ?? '').toString());
     final published = newsItem['published'] ??
         newsItem['timestamp'] ??
         DateTime.now().toIso8601String().substring(0, 16);

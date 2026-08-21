@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/text_sanitizer.dart';
+
 /// Tarjeta de una entrada SitRep en el feed. Widget puro: recibe la entrada y
 /// callbacks de acción, sin conocer detalles del estado de la pestaña.
 class SitrepNewsCard extends StatelessWidget {
@@ -18,9 +20,9 @@ class SitrepNewsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = item['title'] ?? 'Sin título';
+    final title = TextSanitizer.clean(item['title']?.toString() ?? 'Sin título');
     final source = item['source'] ?? 'Intel Hub';
-    final summary = item['summary'] ?? item['text'] ?? '';
+    final summary = TextSanitizer.clean((item['summary'] ?? item['text'] ?? '').toString());
     final published = item['published'] ?? item['timestamp'] ?? '';
     final imageUrl = item['image'] ?? item['img'] ?? item['media_url'];
 

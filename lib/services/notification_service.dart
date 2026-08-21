@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'settings_persistence_service.dart';
 import 'voice_service.dart';
+import '../utils/text_sanitizer.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
@@ -73,7 +74,10 @@ class NotificationService {
   }) async {
     await init();
 
-    final key = deduplicationKey ?? '$title|$body';
+    final cleanTitle = TextSanitizer.clean(title);
+    final cleanBody = TextSanitizer.clean(body);
+
+    final key = deduplicationKey ?? '$cleanTitle|$cleanBody';
     final now = DateTime.now();
     final last = _sentAlertKeys[key];
     if (last != null && now.difference(last) < _dedupWindow) {
@@ -105,8 +109,8 @@ class NotificationService {
       priority: Priority.high,
       ticker: '🚨 ALERTA DE SEGURIDAD COBALTO',
       styleInformation: BigTextStyleInformation(
-        body,
-        contentTitle: '🚨 [$level] $title',
+        cleanBody,
+        contentTitle: '🚨 [$level] $cleanTitle',
         summaryText: 'COBALTO OSINT INTEL',
       ),
       enableVibration: true,
@@ -128,8 +132,8 @@ class NotificationService {
     try {
       await _notificationsPlugin.show(
         id: notificationId,
-        title: '🚨 [$level] $title',
-        body: body,
+        title: '🚨 [$level] $cleanTitle',
+        body: cleanBody,
         notificationDetails: notificationDetails,
         payload: 'alert_tap',
       );
@@ -137,7 +141,7 @@ class NotificationService {
       // Anuncio por voz (TTS) de alertas CRÍTICA/ALTA si está activado en Ajustes.
       final bool announceByVoice = await SettingsPersistenceService.isVoiceAnnounceEnabled();
       if (announceByVoice && (level.contains('CRÍTICA') || level.contains('ALTA'))) {
-        unawaited(VoiceService.speakAlert(title: title, body: body, level: level));
+        unawaited(VoiceService.speakAlert(title: cleanTitle, body: cleanBody, level: level));
       }
     } catch (e) {
       debugPrint('⚠️ Error al mostrar notificación táctica: $e');
@@ -150,6 +154,9 @@ class NotificationService {
     required String body,
   }) async {
     await init();
+
+    final cleanTitle = TextSanitizer.clean(title);
+    final cleanBody = TextSanitizer.clean(body);
 
     final int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
@@ -169,8 +176,8 @@ class NotificationService {
     try {
       await _notificationsPlugin.show(
         id: notificationId,
-        title: title,
-        body: body,
+        title: cleanTitle,
+        body: cleanBody,
         notificationDetails: notificationDetails,
       );
     } catch (e) {

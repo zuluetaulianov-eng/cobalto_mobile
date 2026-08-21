@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/text_sanitizer.dart';
+
 /// Hoja inferior con el detalle completo de una entrada SitRep.
 /// Recibe la entrada, un abridor de enlaces externos y el disparador de la
 /// hoja de difusión.
@@ -38,9 +40,9 @@ class IntelDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = item['title'] ?? 'Sin título';
+    final title = TextSanitizer.clean(item['title']?.toString() ?? 'Sin título');
     final source = item['source'] ?? 'Intel Hub';
-    final summary = item['summary'] ?? item['text'] ?? 'Sin contenido detallado registrado.';
+    final summary = TextSanitizer.clean((item['summary'] ?? item['text'] ?? 'Sin contenido detallado registrado.').toString());
     final published = item['published'] ?? item['timestamp'] ?? '';
     final link = item['link'];
     final imageUrl = item['image'] ?? item['img'] ?? item['media_url'];

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'cobalto_api_service.dart';
 import 'local_extractor_service.dart';
 import 'local_db_service.dart';
+import '../utils/text_sanitizer.dart';
 
 /// Lógica del feed SitRep: obtención combinada (servidor + SQLite + extracción
 /// local con deduplicación) y filtrado por relevancia/búsqueda.
@@ -29,22 +30,28 @@ class SitrepFeedService {
     if (remoteNews.isNotEmpty) {
       final castedRemote = List<Map<String, dynamic>>.from(remoteNews);
       for (final item in castedRemote) {
-        final title = item['title']?.toString() ?? '';
+        final cleanItem = Map<String, dynamic>.from(item);
+        cleanItem['title'] = TextSanitizer.clean(item['title']?.toString());
+        cleanItem['summary'] = TextSanitizer.clean((item['summary'] ?? item['text'])?.toString());
+        final title = cleanItem['title']?.toString() ?? '';
         if (title.isNotEmpty && !seenTitles.contains(title)) {
           seenTitles.add(title);
-          combined.add(item);
+          combined.add(cleanItem);
         }
       }
       // Guardar noticias remotas en la BD local SQLite para modo offline
-      await LocalDbService.insertEntries(castedRemote);
+      await LocalDbService.insertEntries(combined);
     }
 
     // Noticias locales de SQLite que no estén duplicadas
     for (final item in localEntries) {
-      final title = item['title']?.toString() ?? '';
+      final cleanItem = Map<String, dynamic>.from(item);
+      cleanItem['title'] = TextSanitizer.clean(item['title']?.toString());
+      cleanItem['summary'] = TextSanitizer.clean((item['summary'] ?? item['text'])?.toString());
+      final title = cleanItem['title']?.toString() ?? '';
       if (title.isNotEmpty && !seenTitles.contains(title)) {
         seenTitles.add(title);
-        combined.add(item);
+        combined.add(cleanItem);
       }
     }
 

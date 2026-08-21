@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 import 'local_db_service.dart';
+import '../utils/text_sanitizer.dart';
 
 class WidgetService {
   static const String _androidWidgetName = 'CobaltoWidgetProvider';
@@ -12,9 +13,10 @@ class WidgetService {
     required String headline,
   }) async {
     try {
+      final cleanHeadline = TextSanitizer.clean(headline);
       await HomeWidget.saveWidgetData<String>('widget_defcon', 'DEFCON $defcon');
       await HomeWidget.saveWidgetData<String>('widget_alerts_count', 'ALERTAS ACTIVAS: $alertCount');
-      await HomeWidget.saveWidgetData<String>('widget_headline', headline);
+      await HomeWidget.saveWidgetData<String>('widget_headline', cleanHeadline);
 
       await HomeWidget.updateWidget(
         name: _androidWidgetName,

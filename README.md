@@ -6,13 +6,13 @@
 [![Security](https://img.shields.io/badge/Security-AES--256--GCM%20%2B%20TOFU-30D158?style=for-the-badge)](https://github.com)
 [![AEGIS](https://img.shields.io/badge/AEGIS-Mesh%20P2P%20BLE%2FWiFi--Direct-FF6600?style=for-the-badge)](https://github.com)
 [![BFT](https://img.shields.io/badge/BFT-Blue%20Force%20Tracking-0066FF?style=for-the-badge)](https://github.com)
-[![Status](https://img.shields.io/badge/Status-v1.1.0%20RELEASE-00FFAA?style=for-the-badge)](https://github.com)
+[![Status](https://img.shields.io/badge/Status-v1.1.0%20RELEASE%20(84%2F84%20Tests)-00FFAA?style=for-the-badge)](https://github.com)
 
 **COBALTO MOBILE** es una plataforma autónoma de inteligencia táctica, OSINT y monitoreo situacional diseñada para dispositivos Android. Permite operar **independiente en el dispositivo (Offline / Air-Gapped)** realizando scraping e ingesta local de noticias, o en modo **Enlace Estación Base** sincronizándose con el ecosistema central de COBALTO HUB. En emergencias, opera sobre una **red mesh peer-to-peer cifrada (AEGIS)** sin infraestructura de red.
 
 ---
 
-## 🚀 Evolución Táctica Implementada — v1.1.0 RELEASE
+## 🚀 Evolución Táctica Implementada — v1.1.0 RELEASE (84/84 Tests Pasados)
 
 ```mermaid
 graph TD

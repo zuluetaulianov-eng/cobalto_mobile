@@ -8,7 +8,7 @@ import 'crypto_vault_service.dart';
 class LocalDbService {
   static Database? _database;
   static const String _dbName = 'cobalto_edge.db';
-  static const int _dbVersion = 4;
+  static const int _dbVersion = 5;
 
   static Future<Database> get database async {
     if (_database != null) return _database!;
@@ -33,6 +33,7 @@ class LocalDbService {
             published TEXT,
             link TEXT,
             image TEXT,
+            video TEXT,
             timestamp TEXT,
             keywords_matched TEXT,
             relevance_score INTEGER,
@@ -138,6 +139,13 @@ class LocalDbService {
             )
           ''');
         }
+        if (oldVersion < 5) {
+          try {
+            await db.execute('ALTER TABLE local_entries ADD COLUMN video TEXT');
+          } catch (e) {
+            // Ignorar si la columna ya existe
+          }
+        }
       },
     );
   }
@@ -167,6 +175,7 @@ class LocalDbService {
             'published': entry['published'] ?? '',
             'link': entry['link'] ?? '',
             'image': entry['image'] ?? '',
+            'video': entry['video'] ?? entry['video_url'] ?? '',
             'timestamp': entry['timestamp'] ?? DateTime.now().toIso8601String(),
             'keywords_matched': kwList,
             'relevance_score': entry['relevance_score'] ?? 50,

@@ -57,6 +57,9 @@ dependencies:
   flutter_ringtone_player: ^4.0.0+4
   battery_plus: ^7.1.1
   nearby_connections: ^4.3.0
+  video_player: ^2.9.2
+  chewie: ^1.9.0
+  youtube_player_flutter: ^9.1.1
 
 dev_dependencies:
   flutter_test:

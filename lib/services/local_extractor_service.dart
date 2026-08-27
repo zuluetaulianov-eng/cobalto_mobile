@@ -196,8 +196,11 @@ class LocalExtractorService {
         final msgMatches = RegExp(r'<div class="tgme_widget_message_text[^"]*">([\s\S]*?)<\/div>', caseSensitive: false).allMatches(html);
         final photoMatches = RegExp(r"background-image:url\('(.*?)'\)", caseSensitive: false).allMatches(html);
         final photosList = photoMatches.map((m) => m.group(1) ?? '').where((u) => u.isNotEmpty).toList();
+        final videoMatches = RegExp(r'<video[^>]+src="([^"]+)"', caseSensitive: false).allMatches(html);
+        final videosList = videoMatches.map((m) => m.group(1) ?? '').where((u) => u.isNotEmpty).toList();
 
         int photoIdx = 0;
+        int videoIdx = 0;
         for (final match in msgMatches) {
           final rawText = match.group(1) ?? '';
           final cleanMsg = _cleanText(rawText);
@@ -212,6 +215,12 @@ class LocalExtractorService {
               photoIdx++;
             }
 
+            String? videoUrl;
+            if (videoIdx < videosList.length) {
+              videoUrl = videosList[videoIdx];
+              videoIdx++;
+            }
+
             items.add({
               'title': title,
               'source': sourceName,
@@ -219,6 +228,7 @@ class LocalExtractorService {
               'published': DateTime.now().toIso8601String().substring(0, 16),
               'link': url,
               'image': imgUrl,
+              'video': videoUrl,
               'timestamp': DateTime.now().toIso8601String(),
               'keywords_matched': matchedKw,
               'relevance_score': matchedKw.length * 10 + 60,
@@ -252,6 +262,14 @@ class LocalExtractorService {
         image = mediaMatch.group(1);
       }
 
+      // Extraer video (mp4, m3u8, webm, youtube, etc.)
+      String? video;
+      final videoMatch = RegExp('url=["\'](https?://[^"\']+\\.(?:mp4|webm|m3u8|mov))["\']', caseSensitive: false).firstMatch(block) ??
+          RegExp('(https?://(?:www\\.)?(?:youtube\\.com/watch\\?v=|youtu\\.be/)[a-zA-Z0-9_-]+)', caseSensitive: false).firstMatch(block);
+      if (videoMatch != null) {
+        video = videoMatch.group(1);
+      }
+
       if (title.isNotEmpty) {
         final String fullText = '$title $description'.toLowerCase();
         final matchedKw = keywords.where((kw) => fullText.contains(kw.toLowerCase())).toList();
@@ -263,6 +281,7 @@ class LocalExtractorService {
           'published': pubDate.isNotEmpty ? pubDate : DateTime.now().toIso8601String().substring(0, 16),
           'link': link,
           'image': image,
+          'video': video,
           'timestamp': DateTime.now().toIso8601String(),
           'keywords_matched': matchedKw,
           'relevance_score': matchedKw.length * 10 + 50,

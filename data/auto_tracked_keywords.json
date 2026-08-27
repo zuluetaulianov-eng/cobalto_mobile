@@ -1,0 +1,242 @@
+[
+  {
+    "term": "ACORTAR",
+    "type": "KEYWORD",
+    "frequency": 80,
+    "score": 80.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "LINK",
+    "type": "KEYWORD",
+    "frequency": 73,
+    "score": 73.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "MONITOREO",
+    "type": "KEYWORD",
+    "frequency": 50,
+    "score": 50.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "TEST",
+    "type": "KEYWORD",
+    "frequency": 47,
+    "score": 47.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "ENTRY",
+    "type": "KEYWORD",
+    "frequency": 45,
+    "score": 45.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "VENEZUELA",
+    "type": "KEYWORD",
+    "frequency": 39,
+    "score": 39.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "SISTEMA",
+    "type": "KEYWORD",
+    "frequency": 30,
+    "score": 30.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "ÚLTIMA",
+    "type": "KEYWORD",
+    "frequency": 28,
+    "score": 28.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "HORA",
+    "type": "KEYWORD",
+    "frequency": 28,
+    "score": 28.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "NOTICIA",
+    "type": "KEYWORD",
+    "frequency": 25,
+    "score": 25.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "GENERAL",
+    "type": "KEYWORD",
+    "frequency": 25,
+    "score": 25.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "ABORTION",
+    "type": "KEYWORD",
+    "frequency": 23,
+    "score": 23.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "RIGHTS",
+    "type": "KEYWORD",
+    "frequency": 23,
+    "score": 23.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "RIADA",
+    "type": "KEYWORD",
+    "frequency": 22,
+    "score": 22.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "NEPAL",
+    "type": "KEYWORD",
+    "frequency": 20,
+    "score": 20.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "CRITICAL",
+    "type": "KEYWORD",
+    "frequency": 15,
+    "score": 15.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "ALERT",
+    "type": "KEYWORD",
+    "frequency": 15,
+    "score": 15.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "VIDEO",
+    "type": "KEYWORD",
+    "frequency": 15,
+    "score": 15.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "OFICIAL",
+    "type": "KEYWORD",
+    "frequency": 15,
+    "score": 15.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "MULTIMEDIA",
+    "type": "KEYWORD",
+    "frequency": 14,
+    "score": 14.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "FOTO",
+    "type": "KEYWORD",
+    "frequency": 14,
+    "score": 14.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "PUBLICADO",
+    "type": "KEYWORD",
+    "frequency": 14,
+    "score": 14.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "VENEVISIÓN",
+    "type": "KEYWORD",
+    "frequency": 14,
+    "score": 14.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "TERREMOTO",
+    "type": "KEYWORD",
+    "frequency": 12,
+    "score": 12.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "PAÍS",
+    "type": "KEYWORD",
+    "frequency": 11,
+    "score": 11.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "DESAPARECIDOS",
+    "type": "KEYWORD",
+    "frequency": 11,
+    "score": 11.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "ESTADO",
+    "type": "KEYWORD",
+    "frequency": 11,
+    "score": 11.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "CENTRO",
+    "type": "KEYWORD",
+    "frequency": 10,
+    "score": 10.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "VENEZOLANO",
+    "type": "KEYWORD",
+    "frequency": 10,
+    "score": 10.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  },
+  {
+    "term": "PYTHON",
+    "type": "KEYWORD",
+    "frequency": 10,
+    "score": 10.0,
+    "added_at": "2026-08-27T11:16:22.117406",
+    "active": true
+  }
+]

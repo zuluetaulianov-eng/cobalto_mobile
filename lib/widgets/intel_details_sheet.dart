@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../utils/text_sanitizer.dart';
+import 'video_player_sheet.dart';
 
 /// Hoja inferior con el detalle completo de una entrada SitRep.
 /// Recibe la entrada, un abridor de enlaces externos y el disparador de la
@@ -46,6 +47,8 @@ class IntelDetailsSheet extends StatelessWidget {
     final published = item['published'] ?? item['timestamp'] ?? '';
     final link = item['link'];
     final imageUrl = item['image'] ?? item['img'] ?? item['media_url'];
+    final videoUrl = item['video'] ?? item['video_url'];
+    final hasVideo = videoUrl != null && videoUrl.toString().trim().isNotEmpty;
     final matchedKw = item['keywords_matched'] is List ? List<String>.from(item['keywords_matched']) : [];
 
     return DraggableScrollableSheet(
@@ -71,6 +74,73 @@ class IntelDetailsSheet extends StatelessWidget {
                   ),
                 ),
               ),
+              if (hasVideo) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF2D55).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFF2D55).withOpacity(0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFF2D55),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'CONTENIDO EN VIDEO DISPONIBLE',
+                              style: TextStyle(
+                                color: Color(0xFFFF2D55),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              videoUrl.toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white38, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFF2D55),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        ),
+                        onPressed: () {
+                          VideoPlayerSheet.show(
+                            context,
+                            videoUrl: videoUrl.toString(),
+                            title: title,
+                          );
+                        },
+                        child: const Text(
+                          'VER AHORA',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               if (imageUrl != null && imageUrl.toString().startsWith('http')) ...[
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),

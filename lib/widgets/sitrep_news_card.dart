@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/voice_service.dart';
 import '../utils/text_sanitizer.dart';
+import 'video_player_sheet.dart';
 
 /// Tarjeta de una entrada SitRep en el feed. Widget puro: recibe la entrada y
 /// callbacks de acción, sin conocer detalles del estado de la pestaña.
@@ -26,6 +27,8 @@ class SitrepNewsCard extends StatelessWidget {
     final summary = TextSanitizer.clean((item['summary'] ?? item['text'] ?? '').toString());
     final published = item['published'] ?? item['timestamp'] ?? '';
     final imageUrl = item['image'] ?? item['img'] ?? item['media_url'];
+    final videoUrl = item['video'] ?? item['video_url'];
+    final hasVideo = videoUrl != null && videoUrl.toString().trim().isNotEmpty;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -33,7 +36,10 @@ class SitrepNewsCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: Colors.white10),
+        side: BorderSide(
+          color: hasVideo ? const Color(0xFFFF2D55).withOpacity(0.5) : Colors.white10,
+          width: hasVideo ? 1.2 : 1.0,
+        ),
       ),
       child: InkWell(
         onTap: onRead,
@@ -41,14 +47,128 @@ class SitrepNewsCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (imageUrl != null && imageUrl.toString().startsWith('http'))
+              Stack(
+                children: [
+                  Container(
+                    height: 140,
+                    width: double.infinity,
+                    color: Colors.black26,
+                    child: Image.network(
+                      imageUrl.toString(),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                    ),
+                  ),
+                  if (hasVideo)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black38,
+                        child: Center(
+                          child: InkWell(
+                            onTap: () {
+                              VideoPlayerSheet.show(
+                                context,
+                                videoUrl: videoUrl.toString(),
+                                title: title,
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF2D55).withOpacity(0.85),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.5),
+                                    blurRadius: 8,
+                                    spreadRadius: 2,
+                                  )
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 32,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (hasVideo)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF2D55),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.videocam, color: Colors.white, size: 12),
+                            SizedBox(width: 4),
+                            Text(
+                              'VIDEO',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            else if (hasVideo)
               Container(
-                height: 140,
+                height: 100,
                 width: double.infinity,
-                color: Colors.black26,
-                child: Image.network(
-                  imageUrl.toString(),
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF1E0A14), Color(0xFF0F121C)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: InkWell(
+                  onTap: () {
+                    VideoPlayerSheet.show(
+                      context,
+                      videoUrl: videoUrl.toString(),
+                      title: title,
+                    );
+                  },
+                  child: Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFF2D55),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+                        ),
+                        const SizedBox(width: 10),
+                        const Text(
+                          'REPRODUCIR VIDEO SITREP',
+                          style: TextStyle(
+                            color: Color(0xFFFF2D55),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             Padding(
@@ -59,22 +179,46 @@ class SitrepNewsCard extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00E5FF).withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
-                        ),
-                        child: Text(
-                          source.toString().toUpperCase(),
-                          style: const TextStyle(
-                            color: Color(0xFF00E5FF),
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            fontFamily: 'monospace',
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00E5FF).withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              source.toString().toUpperCase(),
+                              style: const TextStyle(
+                                color: Color(0xFF00E5FF),
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
                           ),
-                        ),
+                          if (hasVideo) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF2D55).withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: const Color(0xFFFF2D55).withOpacity(0.3)),
+                              ),
+                              child: const Text(
+                                '🎥 MEDIA',
+                                style: TextStyle(
+                                  color: Color(0xFFFF2D55),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       Text(
                         published,
@@ -115,17 +259,40 @@ class SitrepNewsCard extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFF00E5FF),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    icon: const Icon(Icons.article_outlined, size: 16),
-                    label: const Text(
-                      'LEER',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
-                    ),
-                    onPressed: onRead,
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF00E5FF),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        icon: const Icon(Icons.article_outlined, size: 16),
+                        label: const Text(
+                          'LEER',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                        ),
+                        onPressed: onRead,
+                      ),
+                      if (hasVideo)
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFFF2D55),
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                          ),
+                          icon: const Icon(Icons.play_circle_fill, size: 16),
+                          label: const Text(
+                            'VIDEO',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, fontFamily: 'monospace'),
+                          ),
+                          onPressed: () {
+                            VideoPlayerSheet.show(
+                              context,
+                              videoUrl: videoUrl.toString(),
+                              title: title,
+                            );
+                          },
+                        ),
+                    ],
                   ),
                   Row(
                     children: [

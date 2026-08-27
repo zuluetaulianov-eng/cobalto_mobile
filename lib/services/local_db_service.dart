@@ -366,11 +366,11 @@ class LocalDbService {
     }
   }
 
-  static Future<void> purgeOldData({int maxDays = 30}) async {
+  static Future<void> purgeOldData({int maxHours = 48}) async {
     try {
       final db = await database;
-      final cutoff = DateTime.now().subtract(Duration(days: maxDays)).toIso8601String();
-      await db.delete('local_entries', where: 'timestamp < ?', whereArgs: [cutoff]);
+      final cutoff = DateTime.now().subtract(Duration(hours: maxHours)).toIso8601String();
+      await db.delete('local_entries', where: 'timestamp < ? OR (published IS NOT NULL AND published != "" AND published < ?)', whereArgs: [cutoff, cutoff]);
       await db.delete('local_alerts', where: 'timestamp < ?', whereArgs: [cutoff]);
     } catch (e) {
       AppLogger.warn('No se pudo purgar datos antiguos.', tag: 'LocalDb', error: e);
@@ -380,27 +380,24 @@ class LocalDbService {
   static Future<void> _syncSharedPreferences(List<Map<String, dynamic>> entries) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final existingStr = prefs.getString('cached_sitrep_news');
-      List<dynamic> combined = [];
-      if (existingStr != null && existingStr.isNotEmpty) {
-        try {
-          combined = json.decode(existingStr);
-        } catch (e) {
-          AppLogger.warn('Cache prefs de sitrep corrupto durante sync.', tag: 'LocalDb', error: e);
-        }
+      final cutoff = DateTime.now().subtract(const Duration(hours: 48));
+      
+      final freshEntries = entries.where((e) {
+        final pubStr = e['published']?.toString() ?? e['timestamp']?.toString() ?? '';
+        if (pubStr.isEmpty) return true;
+        final dt = DateTime.tryParse(pubStr);
+        if (dt == null) return true;
+        return dt.isAfter(cutoff);
+      }).toList();
+
+      if (freshEntries.length > 100) {
+        await prefs.setString('cached_sitrep_news', json.encode(freshEntries.sublist(0, 100)));
+      } else {
+        await prefs.setString('cached_sitrep_news', json.encode(freshEntries));
       }
-      final Set<String> existingTitles = combined.map((e) => (e['title'] ?? '').toString()).toSet();
-      for (final newEntry in entries) {
-        final t = (newEntry['title'] ?? '').toString();
-        if (t.isNotEmpty && !existingTitles.contains(t)) {
-          combined.insert(0, newEntry);
-          existingTitles.add(t);
-        }
-      }
-      if (combined.length > 200) combined = combined.sublist(0, 200);
-      await prefs.setString('cached_sitrep_news', json.encode(combined));
     } catch (e) {
       AppLogger.warn('Fallo el respaldo a SharedPreferences.', tag: 'LocalDb', error: e);
     }
   }
 }
+

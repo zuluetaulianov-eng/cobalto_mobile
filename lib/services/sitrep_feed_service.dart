@@ -19,7 +19,11 @@ class SitrepFeedService {
 
   /// Carga y combina las noticias de servidor, SQLite local y, si no hay nada,
   /// extracción directa en el dispositivo. Persiste el resultado en prefs.
+  /// Garantiza la depuración estricta de noticias de más de 48 horas.
   static Future<List<Map<String, dynamic>>> loadCombinedFeed() async {
+    // 1. Purgar automáticamente registros de más de 48 horas en SQLite
+    await LocalDbService.purgeOldData(maxHours: 48);
+
     final localEntries = await LocalDbService.getEntries();
     final remoteNews = await CobaltoApiService.fetchNews();
 
@@ -30,6 +34,7 @@ class SitrepFeedService {
     if (remoteNews.isNotEmpty) {
       final castedRemote = List<Map<String, dynamic>>.from(remoteNews);
       for (final item in castedRemote) {
+        if (!_isWithinRetentionWindow(item, maxHours: 48)) continue;
         final cleanItem = Map<String, dynamic>.from(item);
         cleanItem['title'] = TextSanitizer.clean(item['title']?.toString());
         cleanItem['summary'] = TextSanitizer.clean((item['summary'] ?? item['text'])?.toString());
@@ -43,8 +48,9 @@ class SitrepFeedService {
       await LocalDbService.insertEntries(combined);
     }
 
-    // Noticias locales de SQLite que no estén duplicadas
+    // Noticias locales de SQLite que no estén duplicadas y respeten la ventana de 48h
     for (final item in localEntries) {
+      if (!_isWithinRetentionWindow(item, maxHours: 48)) continue;
       final cleanItem = Map<String, dynamic>.from(item);
       cleanItem['title'] = TextSanitizer.clean(item['title']?.toString());
       cleanItem['summary'] = TextSanitizer.clean((item['summary'] ?? item['text'])?.toString());
@@ -59,6 +65,7 @@ class SitrepFeedService {
     if (combined.isEmpty) {
       final localExtracted = await LocalExtractorService.extractDirectlyOnDevice();
       for (final item in localExtracted) {
+        if (!_isWithinRetentionWindow(item, maxHours: 48)) continue;
         final title = item['title']?.toString() ?? '';
         if (title.isNotEmpty && !seenTitles.contains(title)) {
           seenTitles.add(title);
@@ -73,6 +80,17 @@ class SitrepFeedService {
 
     return combined;
   }
+
+  /// Verifica si una noticia está dentro de la ventana de retención (default 48 horas).
+  static bool _isWithinRetentionWindow(Map<String, dynamic> item, {int maxHours = 48}) {
+    final pubStr = item['published']?.toString() ?? item['timestamp']?.toString() ?? '';
+    if (pubStr.isEmpty) return true;
+    final dt = DateTime.tryParse(pubStr);
+    if (dt == null) return true;
+    final cutoff = DateTime.now().subtract(Duration(hours: maxHours));
+    return dt.isAfter(cutoff);
+  }
+
 
   /// Filtra las entradas por título/resumen/fuente según la consulta.
   static List<Map<String, dynamic>> filterNews(

@@ -49,6 +49,13 @@ const String kMapHtmlContent = '''
       border: 2px solid #00FFAA;
       animation: pulseRing 1.4s infinite ease-out;
     }
+    .pulse-marker-cctv {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: rgba(255, 214, 10, 0.35);
+      border: 2px solid #FFD60A;
+      animation: pulseRing 2.2s infinite ease-out;
+    }
   </style>
 </head>
 <body>
@@ -100,11 +107,12 @@ const String kMapHtmlContent = '''
 
       allPoints.forEach(function(p) {
         if (type === 'ALL' || p.type === type) {
-          // Anillos pulsantes para Alerta, Sismo u Operador GPS
-          if (p.type === 'ALERT' || p.type === 'QUAKE' || p.type === 'OPERATOR') {
+          // Anillos pulsantes para Alerta, Sismo, CCTV u Operador GPS
+          if (p.type === 'ALERT' || p.type === 'QUAKE' || p.type === 'OPERATOR' || p.type === 'CCTV') {
             var pulseClass = 'pulse-marker-critical';
             if (p.type === 'QUAKE') pulseClass = 'pulse-marker-quake';
             if (p.type === 'OPERATOR') pulseClass = 'pulse-marker-operator';
+            if (p.type === 'CCTV') pulseClass = 'pulse-marker-cctv';
 
             var pulseIcon = L.divIcon({
               className: pulseClass,

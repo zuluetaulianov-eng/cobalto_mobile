@@ -193,6 +193,35 @@ class MapPointsService {
           }
         }
       }
+
+      // Cámaras CCTV OSIRIS
+      try {
+        final cctvList = await CobaltoApiService.fetchCctv();
+        for (var cam in cctvList) {
+          if (cam is Map) {
+            final double? lat = (cam['lat'])?.toDouble();
+            final double? lon = (cam['lng'] ?? cam['lon'])?.toDouble();
+            if (lat != null && lon != null && lat != 0.0 && lon != 0.0) {
+              final name = cam['name'] ?? 'Cámara CCTV';
+              final source = cam['source'] ?? 'Public Feed';
+              final feedUrl = cam['feed_url'] ?? '';
+              final city = cam['city'] ?? '';
+              dynamicPoints.add({
+                'lat': lat,
+                'lon': lon,
+                'title': '🎥 CCTV: $name',
+                'type': 'CCTV',
+                'desc': 'Fuente: $source ${city.isNotEmpty ? "($city)" : ""}. Feed de vigilancia táctica/pública.',
+                'color': '#FFD60A',
+                'feed_url': feedUrl,
+                'source': source,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        AppLogger.warn('Error cargando cámaras CCTV en el mapa.', tag: 'Map', error: e);
+      }
     } catch (e) {
       AppLogger.warn('Error cargando datos sísmicos/geográficos del mapa.', tag: 'Map', error: e);
     }

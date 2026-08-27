@@ -190,6 +190,33 @@ class CobaltoApiService {
     return [];
   }
 
+  static Future<List<dynamic>> fetchCctv({double? lat, double? lng, double? radiusKm}) async {
+    try {
+      String url = '${ApiConfig.baseUrl}/api/osiris/data/cctv?region=all';
+      if (lat != null && lng != null && radiusKm != null) {
+        url += '&lat=$lat&lng=$lng&radius_km=$radiusKm';
+      }
+      var response = await _client
+          .get(Uri.parse(url), headers: _headers)
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        response = await _client
+            .get(Uri.parse('${ApiConfig.baseUrl}/api/cctv'), headers: _headers)
+            .timeout(const Duration(seconds: 10));
+      }
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data is Map && data.containsKey('cameras')) return data['cameras'];
+        if (data is List) return data;
+      }
+    } catch (e) {
+      AppLogger.warn('Error fetching CCTV feeds.', tag: 'Api', error: e);
+    }
+    return [];
+  }
+
   static Future<Map<String, dynamic>> fetchRealtime() async {
     try {
       final response = await _client

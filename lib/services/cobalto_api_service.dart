@@ -374,27 +374,23 @@ class CobaltoApiService {
     return {};
   }
 
-  /// Ingesta el catálogo de cámaras CCTV públicas/tácticas desde el motor OSIRIS.
-  static Future<List<dynamic>> fetchCctv({double? lat, double? lng, double? radiusKm}) async {
+  /// Analiza un fotograma CCTV mediante el modelo de Visión Artificial YOLOv8-Nano.
+  static Future<Map<String, dynamic>> analyzeCctv(String cameraId, String feedUrl) async {
     try {
-      String url = '${ApiConfig.baseUrl}/api/osiris/data/cctv';
-      if (lat != null && lng != null && radiusKm != null) {
-        url += '?lat=$lat&lng=$lng&radius_km=$radiusKm';
-      }
+      final url = '${ApiConfig.baseUrl}/api/osiris/cctv/analyze?camera_id=${Uri.encodeComponent(cameraId)}&url=${Uri.encodeComponent(feedUrl)}';
       final response = await _client
           .get(Uri.parse(url), headers: _headers)
           .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data is Map && data['cameras'] is List) {
-          return data['cameras'];
-        }
+        return json.decode(response.body);
       }
     } catch (e) {
-      AppLogger.warn('fetchCctv sin respuesta del servidor.', tag: 'Api', error: e);
+      AppLogger.warn('analyzeCctv sin respuesta del servidor.', tag: 'Api', error: e);
     }
-    return [];
+    return {};
   }
 }
+
+
 
